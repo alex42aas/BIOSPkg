@@ -1,0 +1,106 @@
+## @file
+# EFI/Framework Emulation Platform with UEFI HII interface supported.
+#
+# The Emulation Platform can be used to debug individual modules, prior to creating
+#    a real platform. This also provides an example for how an DSC is created.
+#
+# Copyright (c) 2006 - 2011, Intel Corporation. All rights reserved.<BR>
+#
+#    This program and the accompanying materials
+#    are licensed and made available under the terms and conditions of the BSD License
+#    which accompanies this distribution. The full text of the license may be found at
+#    http://opensource.org/licenses/bsd-license.php
+#
+#    THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+#    WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+#
+##
+#/** @file
+#  Platform DXE driver.
+#
+#
+#**/
+
+[Defines]
+  BASE_NAME                       = PlatformInfoDxe
+  FILE_GUID                       = F87028CC-4412-40B2-8082-6E324244FC8A
+  COMPONENT_TYPE       		      = BS_DRIVER
+  VERSION_STRING                  = 1.0
+  ENTRY_POINT                     = PlatformInfoEntryPoint
+
+[Sources.common]
+  PlatformInfo.c
+  $(EFI_SOURCE)/$(PROJECT_SA_ROOT)/Protocol/MemInfo/MemInfo.c
+  
+[Includes]
+  $(EFI_SOURCE)
+  $(EDK_SOURCE)/Foundation
+  $(EDK_SOURCE)/Foundation/Efi
+  $(EDK_SOURCE)/Foundation/Efi/Include
+  $(EDK_SOURCE)/Foundation/Framework
+  $(EDK_SOURCE)/Foundation/Framework/Include
+  $(EDK_SOURCE)/Foundation/Include
+  $(EDK_SOURCE)/Foundation/Include/IndustryStandard
+  $(EFI_SOURCE)/$(PROJECT_CPU_ROOT)/SampleCode
+  $(EFI_SOURCE)/$(PROJECT_SA_ROOT)
+
+#
+# Edk II Glue Library, some hearder are included by R9 header so have to include
+#
+
+  $(EFI_SOURCE)
+  $(EFI_SOURCE)/Framework
+  $(EDK_SOURCE)/Foundation/Core/Dxe
+  $(EDK_SOURCE)/Foundation/Include/Pei
+  $(EDK_SOURCE)/Foundation/Library/Dxe/Include
+  $(EDK_SOURCE)/Foundation/Library/EdkIIGlueLib/Include
+  $(EDK_SOURCE)/Foundation/Library/EdkIIGlueLib/Include/Library
+
+  $(EFI_SOURCE)/$(PROJECT_CPU_ROOT)
+  $(EFI_SOURCE)/$(PROJECT_CPU_ROOT)/Include
+
+  $(EFI_SOURCE)/$(PROJECT_PCH_ROOT)/Include
+  $(EFI_SOURCE)/$(PROJECT_PCH_ROOT)/Include/PchRegs
+
+  $(EFI_SOURCE)/$(PROJECT_SA_ROOT)/
+  $(EFI_SOURCE)/$(PROJECT_SA_ROOT)/Include
+  $(EFI_SOURCE)/$(PROJECT_SA_ROOT)/MemoryInit/Pei/
+  $(EFI_SOURCE)/$(PROJECT_SA_ROOT)/MemoryInit/Pei/Source/Include/
+  $(EFI_SOURCE)/$(PROJECT_SA_ROOT)/MemoryInit/Pei/Source/Api/
+  $(EFI_SOURCE)/$(PROJECT_SA_ROOT)/MemoryInit/Pei/Source/Include/MrcRegisters/
+
+  $(EDK_SOURCE)/Foundation/Cpu/Pentium/Include
+
+  $(EFI_SOURCE)/CommonPkg/Include/
+  $(EFI_SOURCE)/CommonPkg/Include/Library/
+
+  $(EFI_SOURCE)/ApplicationPkg/Include/
+
+  #$(EFI_SOURCE)/MdePkg
+  #$(EFI_SOURCE)/MdePkg/Include/
+  
+  $(PROJECT_INTEL)/AcpiTables/SampleCode/Library/PlatformAcpiLib
+  $(PROJECT_PLATFORM)
+  $(PROJECT_PLATFORM)/Common
+  $(PROJECT_PLATFORM)/Include
+
+[libraries.common]
+  EdkIIGlueDxeMemoryAllocationLib
+  EdkIIGlueBasePciLibPciExpress
+  EdkIIGlueDxeHobLib
+  EdkIIGlueDxeServicesTableLib
+  AcpiGnvsInitLib
+  EdkIIGlueDxeDebugLibReportStatusCode
+
+  PlatformDataLib
+
+
+[nmake.common]
+
+  DPX_SOURCE        = PlatformInfoDxe.dxs
+
+  C_FLAGS = $(C_FLAGS) -D __EDKII_GLUE_UEFI_BOOT_SERVICES_TABLE_LIB__
+  C_FLAGS = $(C_FLAGS) -D __EDKII_GLUE_DXE_SERVICES_TABLE_LIB__
+  C_FLAGS = $(C_FLAGS) -D __EDKII_GLUE_DXE_HOB_LIB__
+
+

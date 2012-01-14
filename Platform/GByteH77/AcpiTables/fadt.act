@@ -1,0 +1,298 @@
+/*
+ * Intel ACPI Component Architecture
+ * AML Disassembler version 20120816-32 [Aug 16 2012]
+ * Copyright (c) 2000 - 2012 Intel Corporation
+ * 
+ * Disassembly of fadt.bin, Thu Oct 30 16:36:06 2014
+ *
+ * ACPI Data Table [FACP]
+ *
+ * Format: [HexOffset DecimalOffset ByteLength]  FieldName : FieldValue
+ */
+
+/*
+[000h 0000   4]                    Signature : "FACP"    [Fixed ACPI Description Table (FADT)]
+[004h 0004   4]                 Table Length : 00000084
+[008h 0008   1]                     Revision : 02
+[009h 0009   1]                     Checksum : 5F
+[00Ah 0010   6]                       Oem ID : "ALASKA"
+[010h 0016   8]                 Oem Table ID : "A M I"
+[018h 0024   4]                 Oem Revision : 01072009
+[01Ch 0028   4]              Asl Compiler ID : "AMI "
+[020h 0032   4]        Asl Compiler Revision : 00010013
+
+[024h 0036   4]                 FACS Address : 77E8A040
+[028h 0040   4]                 DSDT Address : 7793D198
+[02Ch 0044   1]                        Model : 01
+[02Dh 0045   1]                   PM Profile : 01 [Desktop]
+[02Eh 0046   2]                SCI Interrupt : 0009
+[030h 0048   4]             SMI Command Port : 000000B2
+[034h 0052   1]            ACPI Enable Value : A0
+[035h 0053   1]           ACPI Disable Value : A1
+[036h 0054   1]               S4BIOS Command : 00
+[037h 0055   1]              P-State Control : 00
+[038h 0056   4]     PM1A Event Block Address : 00001800
+[03Ch 0060   4]     PM1B Event Block Address : 00000000
+[040h 0064   4]   PM1A Control Block Address : 00001804
+[044h 0068   4]   PM1B Control Block Address : 00000000
+[048h 0072   4]    PM2 Control Block Address : 00001850
+[04Ch 0076   4]       PM Timer Block Address : 00001808
+[050h 0080   4]           GPE0 Block Address : 00001820
+[054h 0084   4]           GPE1 Block Address : 00000000
+[058h 0088   1]       PM1 Event Block Length : 04
+[059h 0089   1]     PM1 Control Block Length : 02
+[05Ah 0090   1]     PM2 Control Block Length : 01
+[05Bh 0091   1]        PM Timer Block Length : 04
+[05Ch 0092   1]            GPE0 Block Length : 10
+[05Dh 0093   1]            GPE1 Block Length : 00
+[05Eh 0094   1]             GPE1 Base Offset : 00
+[05Fh 0095   1]                 _CST Support : 00
+[060h 0096   2]                   C2 Latency : 0065
+[062h 0098   2]                   C3 Latency : 0039
+[064h 0100   2]               CPU Cache Size : 0400
+[066h 0102   2]           Cache Flush Stride : 0010
+[068h 0104   1]            Duty Cycle Offset : 00
+[069h 0105   1]             Duty Cycle Width : 00
+[06Ah 0106   1]          RTC Day Alarm Index : 0D
+[06Bh 0107   1]        RTC Month Alarm Index : 00
+[06Ch 0108   1]            RTC Century Index : 32
+[06Dh 0109   2]   Boot Flags (decoded below) : 0011
+               Legacy Devices Supported (V2) : 1
+            8042 Present on ports 60/64 (V2) : 0
+                        VGA Not Present (V4) : 0
+                      MSI Not Supported (V4) : 0
+                PCIe ASPM Not Supported (V4) : 1
+                   CMOS RTC Not Present (V5) : 0
+[06Fh 0111   1]                     Reserved : 00
+[070h 0112   4]        Flags (decoded below) : 000384A5
+      WBINVD instruction is operational (V1) : 1
+              WBINVD flushes all caches (V1) : 0
+                    All CPUs support C1 (V1) : 1
+                  C2 works on MP system (V1) : 0
+            Control Method Power Button (V1) : 0
+            Control Method Sleep Button (V1) : 1
+        RTC wake not in fixed reg space (V1) : 0
+            RTC can wake system from S4 (V1) : 1
+                        32-bit PM Timer (V1) : 0
+                      Docking Supported (V1) : 0
+               Reset Register Supported (V2) : 1
+                            Sealed Case (V3) : 0
+                    Headless - No Video (V3) : 0
+        Use native instr after SLP_TYPx (V3) : 0
+              PCIEXP_WAK Bits Supported (V4) : 0
+                     Use Platform Timer (V4) : 1
+               RTC_STS valid on S4 wake (V4) : 1
+                Remote Power-on capable (V4) : 1
+                 Use APIC Cluster Model (V4) : 0
+     Use APIC Physical Destination Mode (V4) : 0
+                       Hardware Reduced (V5) : 0
+                      Low Power S0 Idle (V5) : 0
+
+[074h 0116  12]               Reset Register : [Generic Address Structure]
+[074h 0116   1]                     Space ID : 01 [SystemIO]
+[075h 0117   1]                    Bit Width : 08
+[076h 0118   1]                   Bit Offset : 00
+[077h 0119   1]         Encoded Access Width : 00 [Undefined/Legacy]
+[078h 0120   8]                      Address : 0000000000000CF9
+
+[080h 0128   1]         Value to cause reset : 06
+[081h 0129   3]                     Reserved : 000000
+*/
+
+#include	"fadt.h"
+
+EFI_ACPI_5_0_FIXED_ACPI_DESCRIPTION_TABLE FACP = {
+  EFI_ACPI_5_0_FIXED_ACPI_DESCRIPTION_TABLE_SIGNATURE,		// "FACP"
+  sizeof (EFI_ACPI_5_0_FIXED_ACPI_DESCRIPTION_TABLE),		// 0x10c
+  EFI_ACPI_5_0_FIXED_ACPI_DESCRIPTION_TABLE_REVISION,		// 5
+  0,                						// to make sum of entire table == 0
+  EFI_ACPI_OEM_ID,         					// OEMID is a 6 bytes long field
+  EFI_ACPI_OEM_TABLE_ID,      					// OEM table identification(8 bytes long)
+  EFI_ACPI_OEM_REVISION,      					// OEM revision number
+  EFI_ACPI_CREATOR_ID,        					// ASL compiler vendor ID
+  EFI_ACPI_CREATOR_REVISION,  					// ASL compiler revision number
+
+  0,                		// Physical addesss of FACS
+  0,                		// Physical address of DSDT
+  INT_MODEL,        		// System Interrupt Model
+  PM_PROFILE,			// 1 - Desktop
+  SCI_INT_VECTOR,   		// System vector of SCI interrupt
+  SMI_CMD_IO_PORT,  		// Port address of SMI command port
+  ACPI_ENABLE,      		// value to write to port smi_cmd to enable ACPI
+  ACPI_DISABLE,     		// value to write to port smi_cmd to disable ACPI
+  S4BIOS_REQ,       		// Value to write to SMI CMD port to enter the S4BIOS state
+  0x00,             		// PState control 0x80
+  PM1a_EVT_BLK,     		// Port address of Power Mgt 1a Event Reg Blk
+  PM1b_EVT_BLK,     		// Port address of Power Mgt 1b Event Reg Blk
+  PM1a_CNT_BLK,     		// Port address of Power Mgt 1a Ctrl Reg Blk
+  PM1b_CNT_BLK,     		// Port address of Power Mgt 1b Ctrl Reg Blk
+  PM2_CNT_BLK,      		// Port address of Power Mgt 2  Ctrl Reg Blk
+  PM_TMR_BLK,       		// Port address of Power Mgt Timer Ctrl Reg Blk
+  GPE0_BLK,         		// Port addr of General Purpose Event 0 Reg Blk
+  GPE1_BLK,         		// Port addr of General Purpose Event 1 Reg Blk
+  PM1_EVT_LEN,      		// Byte Length of ports at pm1X_evt_blk
+  PM1_CNT_LEN,      		// Byte Length of ports at pm1X_cnt_blk
+  PM2_CNT_LEN,      		// Byte Length of ports at pm2_cnt_blk
+  PM_TM_LEN,        		// Byte Length of ports at pm_tm_blk
+  GPE0_BLK_LEN,     		// Byte Length of ports at gpe0_blk
+  GPE1_BLK_LEN,     		// Byte Length of ports at gpe1_blk
+  GPE1_BASE,        		// offset in gpe model where gpe1 events start
+  0x00,             		// _CST support 0x85
+  P_LVL2_LAT,       		// worst case HW latency to enter/exit C2 state
+  P_LVL3_LAT,     		// worst case HW latency to enter/exit C3 state
+  FLUSH_SIZE,     		// Size of area read to flush caches
+  FLUSH_STRIDE,   		// Stride used in flushing caches
+  DUTY_OFFSET,      		// bit location of duty cycle field in p_cnt reg
+  DUTY_WIDTH,			// bit width of duty cycle field in p_cnt reg
+  DAY_ALRM,			// index to day-of-month alarm in RTC CMOS RAM
+  MON_ALRM,  			// index to month-of-year alarm in RTC CMOS RAM
+  CENTURY,          		// index to century in RTC CMOS RAM
+  0x0011, 			
+//               Legacy Devices Supported (V2) : 1
+//            8042 Present on ports 60/64 (V2) : 0
+//                        VGA Not Present (V4) : 0
+//                      MSI Not Supported (V4) : 0
+//                PCIe ASPM Not Supported (V4) : 1
+//                   CMOS RTC Not Present (V5) : 0
+  0x00,				// reserved 
+  0x0384A5,
+/*    WBINVD instruction is operational (V1) : 1
+              WBINVD flushes all caches (V1) : 0
+                    All CPUs support C1 (V1) : 1
+                  C2 works on MP system (V1) : 0
+            Control Method Power Button (V1) : 0
+            Control Method Sleep Button (V1) : 1
+        RTC wake not in fixed reg space (V1) : 0
+            RTC can wake system from S4 (V1) : 1
+                        32-bit PM Timer (V1) : 0
+                      Docking Supported (V1) : 0
+               Reset Register Supported (V2) : 1
+                            Sealed Case (V3) : 0
+                    Headless - No Video (V3) : 0
+        Use native instr after SLP_TYPx (V3) : 0
+              PCIEXP_WAK Bits Supported (V4) : 0
+                     Use Platform Timer (V4) : 1
+               RTC_STS valid on S4 wake (V4) : 1
+                Remote Power-on capable (V4) : 1
+                 Use APIC Cluster Model (V4) : 0
+     Use APIC Physical Destination Mode (V4) : 0
+                       Hardware Reduced (V5) : 0
+                      Low Power S0 Idle (V5) : 0*/
+
+  // Reset register:
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,	//
+    8, 				//
+    0x00, 			// offset
+    EFI_ACPI_5_0_UNDEFINED, 	// AccessSize
+//    SMI_CMD_IO_PORT 
+    RST_CNT
+  }, 
+
+  0x06,             		// Reset value
+  0, 0, 0,          		// UINT8 Reserved2[3]
+/*[081h 0129   2]    ARM Flags (decoded below) : 0000
+                              PSCI Compliant : 0
+                       Must use HVC for PSCI : 0
+[083h 0131   1]          FADT Minor Revision : 00*/
+
+  0,				// FACS Address
+  0,				// DSDT Address
+
+  // PM1A Event Block :
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,
+    0x20, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_WORD, 		// AccessSize
+    PM1a_EVT_BLK,
+  }, 
+  // PM1B Event Block :
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,
+    0, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_WORD, 		// AccessSize
+    PM1b_EVT_BLK,
+  }, 
+  // PM1A Control Block :
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,
+    0x10, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_WORD, 		// AccessSize
+    PM1a_CNT_BLK,
+  }, 
+  //PM1B Control Block :
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,
+    0x0, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_WORD, 		// AccessSize
+    PM1b_CNT_BLK,
+  }, 
+  // PM2 Control Block :
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,
+    0x8, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_BYTE, 		// AccessSize
+    PM2_CNT_BLK,
+  }, 
+
+  // PM Timer Block :
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,
+    0x20, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_DWORD, 	// AccessSize
+    PM_TMR_BLK,
+  }, 
+  // GPE0 Block :
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,
+    0x80, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_BYTE, 	// AccessSize
+    GPE0_BLK,
+  }, 
+  // GPE1 Block :
+  { 
+    EFI_ACPI_5_0_SYSTEM_IO,
+    0, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_BYTE, 	// AccessSize
+    GPE1_BLK,
+  }, 
+  // Sleep Control Register :
+  { 
+    EFI_ACPI_5_0_SYSTEM_MEMORY,
+    0, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_UNDEFINED, 	// AccessSize
+    0,
+  }, 
+  // Sleep Status Register :
+  { 
+    EFI_ACPI_5_0_SYSTEM_MEMORY,
+    0, 
+    0x00, 			// offset
+    EFI_ACPI_5_0_UNDEFINED, 	// AccessSize
+    0,
+  }
+
+};
+
+
+VOID*
+ReferenceAcpiTable (
+  VOID
+  )
+{
+  //
+  // Reference the table being generated to prevent the optimizer from removing the 
+  // data structure from the exeutable
+  //
+  return (VOID*)&FACP;
+}
+

@@ -1,0 +1,19 @@
+[FILES]
+MAP = MainFv.fv.map
+FD  = GByteH77.fd
+#BIN = ResetVec.bin
+
+[ADDR]
+BIN_OFFSET = 0x7fffc0			# смещение ResetVec.bin в файле *.fd
+
+[VAR]
+#	offset		value		name (in MAP-file)
+	0x7fffc8	3		*					# uprintf: 0 - no / 1 - yes
+#	0x7ffffc	0xfff60000	*					# FV_BASE
+#	0x7fffe0	*32F		_PeiCore				# PEI_CORE
+#	0x7ffff3	*16R		_SecCore				# SEC_CORE
+
+
+
+
+

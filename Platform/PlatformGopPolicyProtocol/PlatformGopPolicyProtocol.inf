@@ -1,0 +1,104 @@
+#
+# @file
+# Legacy Bios Platform driver
+#
+# Copyright (c) 2005 - 2010, Intel Corporation. All rights reserved.
+# This program and the accompanying materials                          
+# are licensed and made available under the terms and conditions of the BSD License         
+# which accompanies this distribution.  The full text of the license may be found at        
+# http://opensource.org/licenses/bsd-license.php                                            
+#                                                                                           
+
+# THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,                     
+# WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.             
+#
+#
+#
+[Defines]
+  INF_VERSION                    = 0x00010005
+
+  BASE_NAME                      = PlatformGopPolicyProtocol
+
+  FILE_GUID                      = 79CA4209-BBA1-5a9a-8456-E1E66A81484E
+
+  MODULE_TYPE                    = DXE_RUNTIME_DRIVER
+
+  VERSION_STRING                 = 1.0
+
+  ENTRY_POINT                    = PlatformGopPolicyInstall
+
+[Sources]
+  PlatformGopPolicy.c
+  LoadRom.c
+
+
+
+[Packages]
+
+  MdePkg/MdePkg.dec
+
+  MdeModulePkg/MdeModulePkg.dec
+
+  IntelFrameworkPkg/IntelFrameworkPkg.dec
+
+  IntelFrameworkModulePkg/IntelFrameworkModulePkg.dec
+
+  PcAtChipsetPkg/PcAtChipsetPkg.dec
+
+  HaswellPkg/Platform/Platform.dec
+  CommonPkg/CommonPkg.dec
+
+[LibraryClasses]
+
+  UefiBootServicesTableLib
+
+  DebugLib
+
+  UefiDriverEntryPoint
+
+  IoLib
+
+  PcdLib
+
+  PciLib
+
+  MemoryAllocationLib
+
+  TimerLib
+
+  DxeServicesTableLib
+
+  UefiLib
+
+  CommonUtilsLib
+
+
+[Guids]
+
+  gGopVbtGuid
+
+[Protocols]
+
+  gPlatformGopPolicyProtocolGuid             	## PROTOCOL ALWAYS_PRODUCED
+  gGopDisplayBrightnessProtocolGuid     	## PROTOCOL ALWAYS_PRODUCED
+  gEfiFirmwareVolume2ProtocolGuid 		## CONSUMES
+  gEfiLegacyRegionProtocolGuid 			## CONSUMES
+
+  gEfiPciIoProtocolGuid				## CONSUMES
+
+  gEfiUsbIoProtocolGuid				## CONSUMES
+
+  gEfiSmmAccessProtocolGuid			## CONSUMES
+
+  gEfiSmmAccess2ProtocolGuid			## CONSUMES
+
+  gEfiLegacyBiosProtocolGuid
+
+
+[FixedPcd]
+
+
+[Depex]
+
+  TRUE
+

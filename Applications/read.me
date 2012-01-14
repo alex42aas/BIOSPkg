@@ -1,0 +1,29 @@
+# сборка запускается строкой:
+
+build -m MBSupportPkg\Applications\BiosWriter.inf -b DEBUG -p MBSupportPkg\Application.dsc
+
+для Gigabyte-H77 (в дескрипторе оригинальной прошивки границы региона BIOS указаны от 0 до 8Мб (весь объем микросхемы) 
+и не совпадают с границами, указанными в дескрипторе):
+build -m MBSupportPkg\Applications\BiosWriterGbyteH77.inf -b DEBUG -p MBSupportPkg\Application.dsc
+
+Окружение:
+
+c:\edk2_2014_h77>build -m MBSupportPkg\Applications\BiosWriter.inf -b DEBUG -p MBSupportPkg\Application.dsc
+Build environment: Windows-7-6.1.7601-SP1
+Build start time: 12:01:11, Jun.27 2016
+
+WORKSPACE        = c:\edk2_2014_h77
+ECP_SOURCE       = c:\edk2_2014_h77\edkcompatibilitypkg
+EDK_SOURCE       = c:\edk2_2014_h77\edkcompatibilitypkg
+EFI_SOURCE       = c:\edk2_2014_h77
+EDK_TOOLS_PATH   = c:\edk2_2014_h77\basetools
+
+
+Architecture(s)  = IA32 X64
+Build target     = DEBUG
+Toolchain        = VS2012x86
+
+Active Platform          = c:\edk2_2014_h77\MBSupportPkg\Application.dsc
+Active Module            = c:\edk2_2014_h77\MBSupportPkg\Applications\BiosWriter.inf
+Flash Image Definition   = c:\edk2_2014_h77\MBSupportPkg\Application.fdf
+

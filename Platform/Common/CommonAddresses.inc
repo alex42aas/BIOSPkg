@@ -1,0 +1,21 @@
+
+
+PCIE_BASE_ADDRESS	EQU	0F8000000h
+
+HPET_BASE		EQU	0FED00000h	; размещен в 0 регионе
+PCH_RCRB_HPET_DECODE	EQU	080h		; выбор 0 региона и включение таймера
+
+MCH_BASE_ADDRESS        EQU	0FED10000h
+
+DMI_BASE_ADDRESS        EQU	0FED18000h
+
+PCH_RCRB_BASE		EQU	0FED1C000h
+
+;PCH_ACPI_BASE_ADDRESS         EQU 01800h
+;GPIO_BASE_ADDRESS             EQU 01c00h
+
+;MICROCODE_FV_BASE_ADDRESS     EQU 0FFF20080h      ; PcdGet32 (PcdFlashMicrocodeFvBase)
+;MICROCODE_FV_SIZE             EQU 10800h          ; PcdGet32 (PcdFlashMicrocodeFvSize)
+
+;;FLASH_AREA_BASE_ADDRESS       EQU 0FF800000h      ; PcdGet32 (PcdFlashAreaBaseAddress)
+

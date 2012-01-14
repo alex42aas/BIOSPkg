@@ -1,0 +1,109 @@
+## @file
+# Component description file for Nt32 Fimware Volume Block DXE driver module.
+#
+# This DXE runtime driver implements and produces the Fimware Volue Block Protocol on
+#  NT32 emulator.
+# Copyright (c) 2006 - 2010, Intel Corporation. All rights reserved.<BR>
+#
+#  This program and the accompanying materials
+#  are licensed and made available under the terms and conditions of the BSD License
+#  which accompanies this distribution. The full text of the license may be found at
+#  http://opensource.org/licenses/bsd-license.php
+#  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+#
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = FvbServicesRuntimeSmmDxe
+  FILE_GUID                      = E9ADF05B-FA93-4CCA-959F-9667F2FF01CD
+  MODULE_TYPE                    = DXE_RUNTIME_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = FvbInitializeSmm
+
+#
+# The following information is for reference only and not required by the build tools.
+#
+#  VALID_ARCHITECTURES           = IA32
+#
+
+[Sources]
+  FvbInfo.c
+  FwBlockServiceSmm.h
+  FWBlockServiceSmm.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  HaswellPkg/Platform/Platform.dec
+  CommonPkg/CommonPkg.dec
+  IntelFrameworkPkg/IntelFrameworkPkg.dec
+  
+
+[LibraryClasses]
+  UefiBootServicesTableLib
+  MemoryAllocationLib
+  BaseMemoryLib
+  HobLib
+  DebugLib
+  DxeServicesTableLib
+  BaseLib
+  UefiDriverEntryPoint
+  UefiLib
+
+[BuildOptions.common]
+  MSFT:*_*_*_CC_FLAGS = /Fa
+
+
+
+
+[Guids]
+#  gEfiVariableGuid
+  
+  gEfiEventVirtualAddressChangeGuid             # ALWAYS_CONSUMED  Create Event: EVENT_GROUP_GUID
+
+[Protocols]
+  gEfiFirmwareVolumeBlockProtocolGuid           # PROTOCOL ALWAYS_PRODUCED
+  gEfiDevicePathProtocolGuid                    # PROTOCOL SOMETIMES_PRODUCED
+  gEfiSmmFirmwareVolumeBlockProtocolGuid        ## produced
+  gEfiSmmBaseProtocolGuid
+  gEfiSmmBase2ProtocolGuid
+  gEfiSpiProtocolGuid
+  gEfiSmmSpiProtocolGuid
+
+
+[FixedPcd]
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageVariableSize
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwWorkingSize
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwSpareSize
+
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageVariableBase
+
+  gEfiPlatformPkgTokenSpaceGuid.PcdFlashNvStorageEventLogBase
+  gEfiPlatformPkgTokenSpaceGuid.PcdFlashNvStorageEventLogSize
+  gEfiPlatformPkgTokenSpaceGuid.PcdFirmwareBlockSize
+
+
+  gEfiCommonPkgTokenSpaceGuid.PcdSystemVolumeBase
+
+  gEfiCommonPkgTokenSpaceGuid.PcdBiosFlashBase
+  gEfiCommonPkgTokenSpaceGuid.PcdBiosFlashSize
+
+  gEfiCommonPkgTokenSpaceGuid.PcdBiosRegionOffset
+  gEfiCommonPkgTokenSpaceGuid.PcdBiosRegionSize
+
+
+[Pcd]
+
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFirmwareFdSize
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashFvRecoveryBase
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashNvStorageEventLogBase
+
+[Depex]
+
+	# IF ADD gEfiSmmSpiProtocolGuid THEN THIS DRIVER WILL NOT LOADED.
+   gEfiFirmwareVolumeBlockProtocolGuid AND gEfiSmmAccess2ProtocolGuid AND gEfiSmmControl2ProtocolGuid AND gEfiSmmBaseProtocolGuid AND gEfiSmmBase2ProtocolGuid AND gEfiSmmSpiProtocolGuid
+
+  

@@ -1,0 +1,66 @@
+## @file
+# EFI/Framework Emulation Platform with UEFI HII interface supported.
+#
+# The Emulation Platform can be used to debug individual modules, prior to creating
+#    a real platform. This also provides an example for how an DSC is created.
+#
+# Copyright (c) 2006 - 2011, Intel Corporation. All rights reserved.<BR>
+#
+#    This program and the accompanying materials
+#    are licensed and made available under the terms and conditions of the BSD License
+#    which accompanies this distribution. The full text of the license may be found at
+#    http://opensource.org/licenses/bsd-license.php
+#
+#    THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+#    WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+#
+##
+ [Defines] 
+   INF_VERSION = 0x00010005 
+   BASE_NAME = BiosWriterGigabyte
+   FILE_GUID = f0d62497-2394-4652-8ae7-de106ab8e1ed
+   MODULE_TYPE = UEFI_APPLICATION 
+   ENTRY_POINT = BiosWriterEntryPoint 
+
+ [Sources] 
+   BiosWriter.c 
+   SpiFlash.c
+
+[Sources.x64]
+  InOut.asm
+
+
+[Packages] 
+   MdePkg/MdePkg.dec 
+   MdeModulePkg/MdeModulePkg.dec 
+   IntelFrameworkPkg/IntelFrameworkPkg.dec
+   IntelFrameworkModulePkg/IntelFrameworkModulePkg.dec 
+   CommonPkg/CommonPkg.dec
+   StdLib/StdLib.dec 
+   HaswellPkg/Applications/BiosWriter.dec
+   HaswellPkg/Platform/Platform.dec
+
+
+[LibraryClasses] 
+#   UefiApplicationEntryPoint 
+   FsUtilsLib
+   LibC 		# sprintf etc.
+   DevicePathLib
+
+[Protocols]
+  gEfiLoadedImageProtocolGuid                   # PROTOCOL CONSUMES
+   gIgdOpRegionProtocolGuid
+   gSaGlobalNvsAreaProtocolGuid
+   gEfiLegacyBiosPlatformProtocolGuid
+   gPlatformGopPolicyProtocolGuid
+   gEfiEdidDiscoveredProtocolGuid
+   gEfiEdidActiveProtocolGuid
+   gEfiEdidOverrideProtocolGuid
+   gGopDisplayBrightnessProtocolGuid
+
+[Pcd]
+  gEfiMdePkgTokenSpaceGuid.PcdUefiLibMaxPrintBufferSize   ## CONSUME
+
+
+[BuildOptions.Common]
+MSFT:*_*_*_CC_FLAGS = /DGIGABYTE_H77

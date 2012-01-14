@@ -1,0 +1,40 @@
+## @file
+#  
+#  Performance library instance used in PEI phase.
+#  
+#  This library provides the performance measurement interfaces in PEI phase, it creates
+#  and consumes GUIDed HOB for performance logging. The GUIDed HOB is passed to DXE phase
+#  so that it can be taken over by DxeCorePerformanceLib.  
+#  
+#  Copyright (c) 2006 - 2012, Intel Corporation. All rights reserved.<BR>
+#  This program and the accompanying materials
+#  are licensed and made available under the terms and conditions of the BSD License
+#  which accompanies this distribution.  The full text of the license may be found at
+#  http://opensource.org/licenses/bsd-license.php
+#  
+#  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+#  
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = PlatformGuidNamesLib
+  FILE_GUID                      = 632df83e-0d55-4cfd-a23e-698dc356faf0
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = PlatformGuidNamesLib
+
+#
+# The following information is for reference only and not required by the build tools.
+#
+#  VALID_ARCHITECTURES           = IA32 X64 IPF EBC (EBC is for build only)
+#
+
+[Sources]
+  PlatformGuidNames.c
+  H77_GuidNames.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  HaswellPkg/Platform/Platform.dec

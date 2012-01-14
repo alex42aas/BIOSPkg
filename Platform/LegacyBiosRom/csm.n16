@@ -1,0 +1,6042 @@
+BITS 16
+%ifdef DEBUG
+  %define SERIAL_DEBUG 1
+  %define VGA_2_CONSOLE 1
+  %define DEBUG_PRINT_INT 1
+  %define POSTCODE_DEBUG 1
+  %define SERIAL_2_VGA 0
+%else
+  %define SERIAL_DEBUG 0
+  %define VGA_2_CONSOLE 0
+  %define DEBUG_PRINT_INT 0
+  %define POSTCODE_DEBUG 0
+  %define SERIAL_2_VGA 0
+%endif
+
+
+;++++++++++++++++++++++++++++++++++++++++++++
+;					    +
+%define	DEBUG_IRQ   0			    
+;					    +
+;++++++++++++++++++++++++++++++++++++++++++++
+
+%define ENABLE_PNP 1
+%define ENABLE_PMM 1
+%define ENABLE_PCI_BIOS_32 1
+%define COPY_ACPI_TO_EBDA 0
+
+%ifdef  LegacyBiosRomInt13
+%define UPDATE_BBS_TABLE  0
+%define ENUMERATE_CDROMS  0
+%else
+%define UPDATE_BBS_TABLE  1
+%define ENUMERATE_CDROMS  1
+%endif
+
+%define RECONNECT_IPL 1
+%define CONNECT_IPL_AFTER_ROM   0
+%define VERBOSE_PCI_INT 0
+%define VERBOSE_INT_13 0
+%define ENABLE_USB_KEY_REPEAT 1
+%define COPY_EXT_MEMORY 1
+%define DMA_INIT_ENABLE 0
+
+;; ==================================================================================
+;; Common macros
+;; ==================================================================================
+
+%define waitio out 0EBh,al
+
+%define CONSOLE 0x3f8
+
+%define TTYS0_LCR CONSOLE + 3
+%define TTYS0_MCR CONSOLE + 4
+
+%define TTYS0_DLL CONSOLE
+%define TTYS0_DLM CONSOLE + 1
+%define TTYS0_LSR CONSOLE + 5
+%define TTYS0_TBR CONSOLE
+
+%define EQUIPMENTLIST  0000000000110110b		;no floppy present, VGA, 8087
+
+%define PCI_LAST_BUS  0x12
+
+%if SERIAL_DEBUG
+%macro TTY_AL 1
+%%m1:
+	mov		dx,TTYS0_LSR
+	in		al,dx
+	test	al,20h
+	je		%%m1
+	mov		dx,TTYS0_TBR
+	mov		al,%1
+	out		dx,al
+;	waitio
+%endmacro 
+
+%macro TTY_BYTE 1
+	mov		al,%1
+	mov		ah,al
+	and		al,0xf0
+	shr		al,4
+	cmp		al,0x9
+	jle		%%b1
+;	sub		al,0xA
+	add 	al,'A'- 0x30 - 0xA
+%%b1:  
+	mov		bl,al
+	add		bl,0x30 ; to ASCII
+
+%if SERIAL_2_VGA
+  SERIAL_2_VGA_AL bl
+%else
+	TTY_AL	bl
+%endif
+
+	mov		al,ah
+	and		al,0xf
+	cmp		al,0x9
+	jle		%%b2
+;	sub		al,0xA
+	add		al,'A' - 0x30 - 0xA
+%%b2:  
+	mov		bl,al
+	add		bl,0x30
+
+%if SERIAL_2_VGA
+  SERIAL_2_VGA_AL bl
+%else
+	TTY_AL	bl
+%endif
+
+%endmacro
+%endif          ; end SERIAL_DEBUG
+
+%if VGA_2_CONSOLE
+%macro VGA_2_CONSOLE_AL 1
+%%m1:
+	mov		dx,TTYS0_LSR
+	in		al,dx
+	test	al,20h
+	je		%%m1
+	mov		dx,TTYS0_TBR
+	mov		al,%1
+	out		dx,al
+;	waitio
+%endmacro 
+%endif          ; end VGA_2_CONSOLE
+
+
+
+
+
+%include "LegacyBios.inc"
+
+%include "kbd_tbl.inc"
+%include "flp_tbl.inc"
+%include "rs_tbl.inc"
+%include "pci_tbl.inc"
+%include "dma_tbl.inc"
+%include "rtc_tbl.inc"
+%include "bios_conf_tbl.inc"
+
+;; ==================================================================================
+;; Device-oriented functions
+;; ==================================================================================
+times 0x0800 - ($-$$) db 0
+
+%include "flp_func.inc"
+%include "kbd_func.inc"
+%include "kbd_int16_func.inc"
+%include "lpt_func.inc"
+%include "rs_func.inc"
+%include "pci_func.inc"
+%include "pci32_func.inc"
+
+%ifdef  LegacyBiosRomInt13
+%include "hdd_smi_func.inc"
+%else
+%include "hdd_func.inc"
+%endif
+
+%include "rtc_func.inc"
+
+;; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;; Interrupt handlers begin at 0x4000
+;; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+times 0x4000 - ($-$$) db 0
+
+;; ==================================================================================
+;; Int 00 Entry point - Exception
+;; ==================================================================================
+ALIGN 32
+IntException:
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x00
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+	iret
+
+mes_trap:
+  db  'Trap ',0
+
+;; ==================================================================================
+;; Int 01 - Trap/Debug interrupt
+;; ==================================================================================
+
+ALIGN 32
+IntTrap:
+%if 1
+%if SERIAL_DEBUG
+  push  bp
+  mov   bp, sp
+
+  push  mes_trap
+  call  SendTxt
+
+  push  ax
+  mov   ax, word [ss:bp+4]
+  push  ax
+  call  SendWord
+  push  ':'
+  call  SendChar
+  mov   ax, word [ss:bp+2]
+  push  ax
+  call  SendWord
+  push  ' '
+  call  SendChar
+  pop   ax
+
+  push  ax
+  call  SendWord      ; ax
+  push  ' '
+  call  SendChar
+
+  push  bx
+  call  SendWord      ; bx
+  push  ' '
+  call  SendChar
+
+  push  cx
+  call  SendWord      ; cx
+  push  ' '
+  call  SendChar
+
+  push  dx
+  call  SendWord      ; dx
+  push  ' '
+  call  SendChar
+
+  push  ds
+  call  SendWord      ; ds
+  push  ':'
+  call  SendChar
+
+  push  si
+  call  SendWord      ; si
+  push  ' '
+  call  SendChar
+
+  push  es
+  call  SendWord      ; es
+  push  ':'
+  call  SendChar
+
+  push  di
+  call  SendWord      ; di
+  push  ' '
+  call  SendChar
+
+  push  eax
+  push  es
+  push  si
+  mov   ax, word [ss:bp+4]
+  mov   es, ax
+  mov   si, word [ss:bp+2]
+  mov   eax, dword [es:si]
+  push  ax
+  call  SendByte
+  shr   eax, 8
+  push  ax
+  call  SendByte
+  shr   eax, 8
+  push  ax
+  call  SendByte
+  shr   eax, 8
+  push  ax
+  call  SendByte
+  mov   eax, dword [es:si+4]
+  push  ax
+  call  SendByte
+  shr   eax, 8
+  push  ax
+  call  SendByte
+  shr   eax, 8
+  push  ax
+  call  SendByte
+  shr   eax, 8
+  push  ax
+  call  SendByte
+  pop   si
+  pop   es
+  pop   eax
+
+  push  mes_crlf
+  call  SendTxt
+
+%if 0  
+  ;delay ~ 1 sec
+  mov   ecx, 0x00100000
+delay_in_trap:
+  in    al, iowait
+  loop  delay_in_trap, ecx
+%endif
+
+  pop   bp
+%endif
+%endif
+	iret		
+
+;; ==================================================================================
+;; Int 02 Entry point (NMI)
+;; ==================================================================================
+
+ALIGN 32
+IntNMI:	
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  'N'
+  call  SendChar
+  push  'M'
+  call  SendChar
+  push  'I'
+  call  SendChar
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+	push	ax
+	in		al,port61	;check type of NMI
+	shl		al,1
+	jb		nmi1		;$80 set: parity error
+	shl		al,1
+	jb		nmi2		;$40 set: I/O check
+
+	mov		al,0dh		;read CMOS register -> clear NMI
+	out		cm_idx,al
+	;out		iowait,al
+	in		al,cm_dat
+	pop		ax
+	iret		
+
+nmi1:
+	cli		;hang system
+	hlt
+nmi2:	
+	cli		;hang system
+	hlt
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;; ==================================================================================
+;; Int 03 
+;; ==================================================================================
+
+ALIGN 32
+Int03:	
+	mov	cx, 3
+int03_entry:
+  mov	bp, sp
+	push	cx
+  	push  	mes_int
+  	call  	SendTxt
+	call	SendByte	    ; "^IntXX"
+	call	crlf
+
+	mov	cx, 8
+int03_l1:
+	mov   ax, word [ss:bp]	
+	push	ax
+	call	SendWord
+	push  ' '
+	call  SendChar
+	add	bp, 2
+	mov   ax, word [ss:bp]	
+	push	ax
+	call	SendWord
+	add	bp, 2
+	call	crlf
+
+	dec	cx
+	jne	int03_l1
+
+int03_loop:
+	jmp	int03_loop
+
+crlf:
+	push	mes_crlf
+	call	SendTxt
+	ret
+
+ALIGN 32
+Int04:	
+	mov	cx, 4
+	jmp	int03_entry
+ALIGN 32
+Int06:	
+	mov	cx, 6
+	jmp	int03_entry
+ALIGN 32
+Int07:	
+	mov	cx, 7
+	jmp	int03_entry
+
+ALIGN 32
+tmpInt10:	
+	pusha
+	mov	cx, 0x10
+	push	cx
+  	push  	mes_int
+  	call  	SendTxt
+	call	SendByte
+	popa
+	iret
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+;; ==================================================================================
+;; Int 05 Entry point - Print Screen
+;; ==================================================================================
+ALIGN 32
+Int05:
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x05
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+	push  ax
+	push	ds
+	xor		ax,ax
+	mov		ds,ax
+	mov		byte [m_prtsc],0ffh	;error
+	pop		ds
+	pop		ax
+	iret
+
+
+ALIGN 32
+IrqHalt:
+	mov	dx, 0x1830		; PMBASE + SMI_EN
+	mov	ax, 0x0000		;
+	out	dx, ax			;
+
+	mov	dx, 0x1804		; PMBASE + PM1_CNT
+	mov	ax, 0x1c00		;
+	out	dx, ax			;
+
+	mov	dx, 0x1804		; PMBASE + PM1_CNT
+	mov	ax, 0x3c00		;
+	out	dx, ax			;
+	
+my_loop:
+ 	jmp	my_loop			;
+
+ALIGN 32
+IrqHook:
+	cli
+	
+my_hook:
+ 	jmp	my_hook			;
+
+
+
+
+;; ==================================================================================
+;; Int 08  (IRQ0) Entry point - System Timer
+;; ==================================================================================
+  ; see in rtc_func.inc
+
+;; ==================================================================================
+;; Int 09 (IRQ1) Entry point - Keyboard
+;; ==================================================================================
+ALIGN 32
+Irq1:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  mes_irq
+  call  SendTxt
+  push  0x01
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+ 	sti								;enable interrupt
+
+%if SERIAL_DEBUG  
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x01
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+  push 	ax						;save registers
+	push 	bx
+ 	push 	cx
+ 	push 	dx
+ 	push 	si
+ 	push 	di
+ 	push 	ds
+ 	push 	es
+
+  cld								;forward direction
+  push  ax
+ 	xor		ax,ax					;BIOS segment
+ 	mov 	ds,ax
+  pop   ax
+
+  cmp   ecx, 'BSU$'
+  je    irq_from_emulated_usb
+
+ 	call 	readchar
+  jmp   irq1_process_scancode
+
+irq_from_emulated_usb:
+  mov   al, bl
+  mov   byte [usb_kbd_flag], 1
+
+irq1_process_scancode:
+%if SERIAL_DEBUG
+  push  mes_process
+  call  SendTxt
+  push  ax
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+
+ 	stc								;give TSRs an opportunity to grap
+ 	mov		ah,4fh					;this key: call Int15 AH=4F
+ 	int		15h
+ 	jb		irq1a					;:not taken
+ 	jmp		i11						;skip this key
+ 	
+irq1a:
+
+ 	mov 	cl,al					;copy scan code
+	cmp 	al,0e0h					;prefix code ?
+ 	jnz 	i1
+ 	or 		byte [m_kbf3],kb_fe0	;set prefix flag
+ 	jmp 	done
+ 	
+i1:
+ 	cmp 	al,0e1h					;prefix code ?
+ 	jnz 	i2
+ 	or 		byte [m_kbf3],kb_fe1	;set prefix flag
+ 	jmp 	done
+ 	
+i2:
+ 	cmp 	al,0ffh					;overrun ?
+	jnz		i2a						;:no
+ 	jmp 	overrun
+ 	
+i2a:
+ 	test 	byte [m_kbf1],kb_fhld	;hold mode ?
+ 	jz 		i3						;:no
+ 	and 	cl,cl					;make code ?
+ 	js 		i3						;no - break
+ 	xor 	byte [m_kbf1],kb_fhld	;clear hold mode
+i3:
+ 	and 	al,127					;make = break
+ 	jz		overrun1				;zero: ignore
+ 	cmp 	al,maxscan				;too high ?
+ 	ja 		overrun1				;yes: ignore char
+ 	mov		ah,11					;11 bytes per key entry
+ 	mul		ah
+ 	add		ax, kb_tab-11		;add offset of key table
+ 	mov		si,ax
+
+ 	mov 	ah,[cs:si]				;get control byte
+ 	mov 	al,[m_kbf]				;get shift flag
+ 	test 	al,kb_flsh+kb_frsh		;shift set ?
+ 	jz 		i4						;:no
+ 	or 		al,kb_flsh+kb_frsh		;set both bits
+i4:
+ 	shr 	ah,1					;caps lock ?
+ 	jnb 	i5						;:no
+ 	test 	al,kb_fcaps
+ 	jnz 	i6						;:set
+i5:
+ 	shr 	ah,1					;num lock ?
+ 	jnb 	i7						;:no
+ 	test	byte [m_kbf3],kb_fe0	;E0 prefix ?
+ 	jz		i5a						;:no
+ 	and		al,255-kb_flsh-kb_frsh	;extended key - force unshifted scan
+ 	jmp		short i7
+i5a:
+ 	test 	al,kb_fnums
+ 	jz 		i7	;:not set
+i6:
+ 	xor 	al,kb_flsh+kb_frsh		;toggle shift
+i7:
+ 	and 	ax,15
+ 	mov 	bx, shftab				;shift state
+; 	cs: 	xlat
+
+	push	ds
+	push	cs
+	pop		ds
+ 	xlat
+	pop		ds
+
+ 	xchg 	bx,ax					;-> entry offset
+ 	mov 	ax,[cs:bx+si]			;get scan/action code
+
+ 	cmp 	ax,vecmin
+ 	jb	 	ikey					;:scan code
+ 	not 	ax						;action key: convert to jump vector
+ 	shl 	ax,1
+ 	xchg 	bx,ax
+
+ 	; Dispatch special keys.
+
+  mov 	bx,[cs:bx+vectab]		;get vector of special key handler
+ 	call 	bx						;call special key handler
+iact2:
+ 	jmp 	short i11				;done
+	
+overrun1:
+	jmp	short overrun
+	
+ikey:
+ 	and 	cl,cl					;is it break ?
+ 	js 		i11						;yes: ignore
+ 	
+ 	test 	byte [m_kbf3],kb_fe0	;E0 prefix ?
+ 	jz		ikey9					;:no
+ 	test	al,al
+ 	jnz		ikey4
+ 	
+ 	cmp		ah,96h					;Ctrl * -> Ctrl PrtSc
+ 	jnz		ikey1
+ 	mov		ah,72h
+ 	;jmp		short ikey9
+	jmp		ikey9
+ 	
+ikey1:
+ 	cmp		ah,1ch					;Alt keypad enter -> A600
+	jnz		ikey2
+	mov		ah,0a6h
+
+ikey2:
+	cmp		ah,35h					;Alt keypad -> A400
+	jnz		ikey3
+	mov		ah,0a4h
+
+ikey3:
+	cmp		ah,84h					;high extended keys -> no change
+ 	jae		ikey9
+ 	mov		al,0e0h					;remember this was a extended key
+ 	;jmp		short ikey9
+	jmp		ikey9
+
+ikey4:
+	cmp		ah,1ch					;keypad enter ?
+	jz		ikey8
+	cmp		ah,35h					;keypad / ?
+	jnz		ikey9
+ikey8:
+	mov		ah,0e0h					;extended key, translated back by kb_xlat
+ikey9:
+ 	call 	putbuf					;put scan code in buffer
+ 	jnb 	i11						;:ok
+overrun:
+ 	cli
+ 	mov 	al,eoi					;reset interrupt controller
+ 	out 	pic0,al
+ 	call 	beep
+ 	jmp 	short done2
+	
+i11:
+i12: 
+	and 	byte [m_kbf3],255-kb_fe0-kb_fe1	;reset prefix flag
+
+  cmp   byte [usb_kbd_flag], 1
+  je    skip_hw_op_on_emulated_usb
+
+ 	cli  
+ 	mov 	al,eoi					;reset interrupt controller
+ 	out 	pic0,al
+ 	call 	enakbd
+ 	jmp 	short done3
+
+done:
+
+  cmp   byte [usb_kbd_flag], 1
+  je    skip_hw_op_on_emulated_usb
+
+ 	cli
+ 	mov 	al,eoi					;reset interrupt controller
+ 	out 	pic0,al
+done2:
+
+  cmp   byte [usb_kbd_flag], 1
+  je    skip_hw_op_on_emulated_usb
+
+ 	call 	enakbd
+
+skip_hw_op_on_emulated_usb:
+  mov   byte [usb_kbd_flag], 0
+
+done3:
+ 	pop 	es
+ 	pop 	ds
+ 	pop 	di
+ 	pop 	si
+ 	pop 	dx
+ 	pop 	cx
+ 	pop 	bx
+ 	pop 	ax
+
+ 	iret
+
+;; ==================================================================================
+;; Int 0b - IRQ2 Dummy for debug
+;; ==================================================================================  
+Irq2:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x02
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x02
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+  push  ax
+	mov		al,eoi					;end of interrupt
+	out		pic0,al
+  pop   ax
+  iret  
+
+;; ==================================================================================
+;; Int 0b - IRQ3 Dummy for debug
+;; ==================================================================================  
+Irq3:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x03
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x03
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+  push  ax
+	mov		al,eoi					;end of interrupt
+	out		pic0,al
+  pop   ax
+  iret
+
+;; ==================================================================================
+;; Int 0c - IRQ4 COM1 interrupt
+;; ==================================================================================  
+Irq4:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x04
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x04
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+  push  ax
+	mov		al,eoi					;end of interrupt
+	out		pic0,al
+  pop   ax
+  iret
+
+;; ==================================================================================
+;; Int 0d - IRQ5 Dummy for debug
+;; ==================================================================================  
+Irq5:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x05
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x05
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+  push  ax
+	mov		al,eoi					;end of interrupt
+	out		pic0,al
+  pop   ax
+  iret
+
+;; ==================================================================================
+;; Int 0e - IRQ6 Floppy interrupt
+;; ==================================================================================
+Irq6:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x06
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x06
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+	push		ax
+	push		ds
+	xor		ax,ax
+	mov		ds,ax
+	or		byte [m_fdrecal],80h	;set interrupt flag
+	mov		al,eoi					;end of interrupt
+	out		pic0,al
+	pop		ds
+	pop		ax
+	iret
+
+;; ==================================================================================
+;; Int 0f - IRQ7 Dummy for debug
+;; ==================================================================================  
+Irq7:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x07
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x07
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  push		ax
+  mov		al,eoi					;end of interrupt
+  out		pic0,al
+  pop		ax
+  iret
+
+;; ==================================================================================
+;; Int 70 - IRQ8 (RTC) 
+;; ==================================================================================    
+    ; see in rtc_func.inc
+
+;; ==================================================================================
+;; Int 71 - IRQ9 Dummy for debug
+;; ==================================================================================  
+Irq9:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x09
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x09
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  push    ax
+  mov     al,eoi  ;signal end of interrupt
+  out     pic1,al
+  out     pic0,al
+  pop     ax
+  iret
+
+sendIrq:
+    push  ax
+    push  mes_irq
+    call  SendTxt
+    call  SendByte
+    push  mes_crlf
+    call  SendTxt
+    ret
+
+;; ==================================================================================
+;; Int 72 - IRQ10 Dummy for debug
+;; ==================================================================================  
+
+Irq10:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x0a
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x10
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+
+
+%if 0
+  mov   al, byte [cs:type_amt1]
+  cmp   al, 0
+  jne   irq10_skip_init_amt
+  call  InitAMT
+irq10_skip_init_amt:
+%endif
+
+  mov     al,eoi  ;signal end of interrupt
+  out     pic1,al
+  out     pic0,al
+  pop     ax
+  iret
+
+
+;; ==================================================================================
+;; Int 73 - IRQ11 Dummy for debug
+;; ==================================================================================  
+
+Irq11:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x0b
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x11
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  push    ax
+  mov     al,eoi  ;signal end of interrupt
+  out     pic1,al
+  out     pic0,al
+  pop     ax
+  iret
+
+;; ==================================================================================
+;; Int 74 - IRQ12 Dummy for debug
+;; ==================================================================================  
+Irq12:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x0c
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x12
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  push    ax
+  mov     al,eoi  ;signal end of interrupt
+  out     pic1,al
+  out     pic0,al
+  pop     ax
+  iret
+
+;; ==================================================================================
+;; Int 75 - IRQ13 Dummy for debug
+;; ==================================================================================  
+Irq13:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x0d
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x13
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  push    ax
+  mov     al,eoi  ;signal end of interrupt
+  out     pic1,al
+  out     pic0,al
+  pop     ax
+  iret
+
+;; ==================================================================================
+;; Int 76 - IRQ14 Dummy for debug
+;; ==================================================================================  
+Irq14:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x0e
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x14
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  push    ax
+  mov     al,eoi                  ;signal end of interrupt
+  out     pic1,al
+  out     pic0,al
+  pop     ax
+  iret
+
+;; ==================================================================================
+;; Int 77 - IRQ15 Dummy for debug
+;; ==================================================================================  
+Irq15:
+;++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  0x0f
+  push  mes_irq
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  0x15
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  push    ax
+  mov     al,eoi  ;signal end of interrupt
+  out     pic1,al
+  out     pic0,al
+  pop     ax
+  iret
+
+;; ==================================================================================
+;; Int XX - Hard drive IRQ to be replace some IRQxx depends on
+;; what IRQ line PCI SATA/CF controller assosiated with
+;; ==================================================================================  
+%ifndef  LegacyBiosRomInt13
+IrqHardDrive:
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+%if VERBOSE_INT_13
+  push  mes_crlf
+  call  SendTxt
+  push  mes_irq
+  call  SendTxt
+  push  'H'
+  call  SendChar
+  push  'D'
+  call  SendChar
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+%endif
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+    push    mes_irq_hd
+    call    SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+  ; check if this Irq is really from assosiated controller
+  ; read PCISTS register
+
+  	push    ax
+  	push    ds
+  	xor     ax, ax   				        ;BIOS segment
+  	mov     ds, ax
+  	mov     byte [m_hdflag], 0ffh    ;set interrupt flag
+  	pop     ds
+  	pop     ax
+
+  	push    ax
+  	push    dx
+
+  	mov   dx, word [cs:prim_bmaster]
+  	add   dx, 2       ; Primary Bus Master IDE status register
+  	in    al, dx
+  	or    al, 0x84    ; clear interrupt bits
+  	out   dx, al
+
+  	mov   dx, word [cs:secd_bmaster]
+  	add   dx, 2       ; Secondary Bus Master IDE status register
+  	in    al, dx
+  	or    al, 0x84
+  	out   dx, al
+
+	mov		  dx, word [cs:prim_cmd_stat]
+	in		  al, dx					        ; clear interrupt request
+	mov		  dx, word [cs:secd_cmd_stat]
+	in		  al, dx					        ; clear interrupt request
+
+exit_hard_drive_irq:
+
+  	mov     al,eoi  ;signal end of interrupt
+  	out     pic1,al
+  	out     pic0,al
+
+  	pop     dx
+  	pop     ax
+
+  	iret
+;; ==================================================================================
+;; Int XX - AMT drive IRQ to be replace some IRQxx (Irq10 by default)
+;; ==================================================================================   
+IrqAMT:
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_irq
+  call  SendTxt
+  push  'A'
+  call  SendChar
+  push  'm'
+  call  SendChar
+  push  't'
+  call  SendChar
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+%if 0
+  cmp   byte [cs:type_amt1], 0
+  jne   amt_already_init
+
+  call  InitAMT
+
+amt_already_init:  
+%endif
+
+  push  ax
+  push  dx
+
+	mov		dx, word [cs:amt_cmd_stat]
+	in		al, dx					        ; clear interrupt request
+
+  mov   dx, word [cs:amt_bmaster]
+  add   dx, 2       ; AMT Bus Master primary IDE status register
+  in    al, dx
+  or    al, 0x06
+  out   dx, al
+
+  mov   dx, word [cs:amt_bmaster]  
+  add   dx, 0x0a       ; AMT Bus Master secondary IDE status register
+  in    al, dx
+  or    al, 0x06
+  out   dx, al
+
+exit_irq_amt:
+  pop   dx
+  pop   ax
+
+  push    ax
+  mov     al,eoi  ;signal end of interrupt
+  out     pic1,al
+  out     pic0,al
+  pop     ax
+
+  iret
+%endif	
+;; ==================================================================================
+;; Int 10 Entry point - Video
+;; ==================================================================================
+	; Consist allocated in VideoBios (OpROM)
+
+;; ==================================================================================
+;; Int 11 Entry point - Equpment determination
+;; ==================================================================================
+ALIGN 32
+Int11:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x11
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x11
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+	push	ds
+	xor		ax,ax
+	mov		ds,ax
+	mov		ax, word [m_devflg]
+	or		ax, 0x0004				; pointing device exists
+	pop		ds
+
+  iret
+
+;; ==================================================================================
+;; Int 12 Entry point - Base Memory Size
+;; ==================================================================================
+ALIGN 32
+Int12:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x12
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x12
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+	push	ds
+	xor		ax,ax
+	mov		ds,ax
+	mov		ax,[m_lomem]
+	pop		ds
+
+	iret
+
+;; ==================================================================================
+;; Int 13 Entry point - HDD & FDD Service routines
+;; ==================================================================================
+    ; see in hdd_func.inc
+
+;; ==================================================================================
+;; Int 14 Entry point - Serial Communication
+;; ==================================================================================
+ALIGN 32
+Int14:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x14
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x14
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+	sti							;reenable interrupts
+
+	push	ds					;save registers
+	push	si
+	push	dx
+	push	cx
+	push	bx
+	mov		bx,ax				;save AX
+	xor		ax,ax				;access BIOS segment
+	mov		ds,ax
+	cmp		dx,4				;max port ?
+	jae		rs_exit				;:return
+	mov		si,dx				;-> table index
+	mov		cl,[si+m_rstime]	;get time-out value
+	shl		si,1
+	mov		dx,[si+m_rsio]		;get I/O port base
+	and		dx,dx				;0 -> not present
+	jz		rs_exit
+	mov		al,bh				;get command code
+	and		al,al
+	jz		rs_init				;AH=0 -> initialize
+	dec		ax
+	jz		rs_xmit				;AH=1 -> transmit
+	dec		ax
+	jz		rs_recv				;AH=2 -> receive
+	dec		ax
+	jz		rs_stat				;AH=3 -> get status
+rs_exit:
+	pop		bx					;restore registers
+	pop		cx
+	pop		dx
+	pop		si
+	pop		ds
+	iret
+
+;; ==================================================================================
+;; Int 15 Entry point
+;; ==================================================================================
+ALIGN 32
+Int15:
+;++++++++++++++++++++++++++++++++
+%if	0
+  push  0x15
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x15
+  call  SendByte
+  push  ' '
+  call  SendChar
+  push  ax
+  call  SendWord
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+    sti
+
+    cmp     ax, 0x666
+    jz      CpuHalt
+
+    cmp     ah, 0x5f
+    jnz     not_5f_funcs
+
+      cmp     al, 0x00
+      jz      GetVersion
+    
+      cmp     al, 0x14
+      jz      ChangeSbiosStateHook
+
+      cmp     al, 0x70
+      jz      GetSetMuxState
+    
+not_5f_funcs:
+    cmp     ah, 0x88
+    jz      GetExtMemory
+
+    cmp     ah, 0x87
+    jz      CopyExtMemory
+
+    cmp     ah, 0xc0
+    jz      GetConfiguration
+
+    cmp     ah, 0xc1
+    jz      GetEbdaSegment
+
+    cmp     ah, 0x24
+    jnz     not_24_funcs
+
+       cmp    al, 00
+       jz     DisableA20Gate
+
+       cmp    al, 01
+       jz     EnableA20Gate
+
+       cmp    al, 02
+       jz     GetA20GateStatus
+
+       cmp    al, 03
+       jz     QueryA20GateSupport
+
+not_24_funcs:    
+
+    cmp     ah, 0xD8
+    jne     not_D8_funcs
+
+        cmp   al, 0x00
+        jz    EisaReadSlotConfigInfo
+
+        cmp   al, 0x01
+        jz    EisaReadFuncConfigInfo
+
+not_D8_funcs:
+
+    cmp     ah, 0xE8
+    jne     not_E8_funcs
+
+        cmp   al, 0x01
+        jz    GetAboveMem
+
+        cmp   al, 0x20
+        jz    GetE820
+
+not_E8_funcs:
+
+    cmp     ah, 0x4F
+    jz      KeyPressHook
+
+    cmp     ah, 0xC2          ; Pointer functions
+    jnz     not_C2_funcs
+
+        cmp   al, 0x00
+        jz    EnableDisablePointerDevice
+
+        cmp   al, 0x03
+        jz    SetPointerDeviceResolution
+
+        cmp   al, 0x05
+        jz    InitPointerDevice
+
+        cmp   al, 0x07
+        jz    SetPointerDeviceHandler
+
+not_C2_funcs:
+
+ExitError:
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  or    ax, 0x0001          ; set carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+  iret
+
+CpuHalt:
+    cli
+    hlt
+    jmp CpuHalt
+
+GetSetMuxState:
+   cmp  ch, 1
+   jz   SetMuxState
+   cmp  ch, 0
+   jz   GetMuxState
+   mov  ax, 0x15f  ;; Function supported but filed
+   iret
+
+SetMuxState:
+   
+; Set MUX State 
+;  AX = 5F70h 
+;  CH = 01, Set MUX State 
+;  CL = MUX state 
+;        0 - Set all MUXs to iGPU
+;        1 - Set all MUXs to dGPU 
+; Return Status: 
+; AX = Return Status (function not supported if AL != 5Fh): 
+;       = 015Fh, Function supported but failed 
+;       = 005Fh, Function supported and successful 
+  cmp cl, 0    ; Set IGD
+  jnz  .errMux
+  mov  ax, 0x5f ;Success
+  iret
+.errMux:
+  mov  ax, 0x15f  ;; Function supported but filed
+  iret
+
+GetMuxState:
+; Get MUX State 
+;  AX = 5F70h 
+;  CH = 00, Get MUX State 
+; Return Status: 
+;  CL = MUX State (0 = iGPU, 9= dGPU) 
+;  AX = Return Status (function not supported if AL != 5Fh): 
+;     = 015Fh, Function supported but failed 
+;     = 005Fh, Function supported and successful 
+  
+  mov  cl, 0     ; iGpu
+  mov  ax, 0x5f  ; Success
+  iret
+  
+GetVersion:
+    ; Calling Registers:
+    ;   AX = 5F00h, INT 15h Interface Version Hook
+    ; Return Registers:
+    ;   AX = Return Status (function not supported if AL != 5Fh):
+    ;      = 015Fh, Function supported but failed
+    ;      = 005Fh, Function supported and successful
+    ;   BH = Major/Minor Version Number
+    ;   Bits 7 - 4 = Major version
+    ;   Bits 3 - 0 = Minor version
+    ;   BL = Revision
+    ;   Bits 7 - 4 = Reserved
+    ;   Bits 3 - 0 = Revision
+    
+    mov     bx, 0x0100
+    mov     al, 0x5f
+    iret
+
+ChangeSbiosStateHook:
+    cmp     bx, 0x078D
+    jz      DisplayStateHook
+
+    cmp     bx, 0x078f
+    jz      MiscellaneousStatusHook
+
+    jmp     ExitError
+    
+DisplayStateHook:
+    ; AX = 5F14h, System BIOS State Hook
+    ; BX = 078Dh, Update Expansion/Display State
+    ; CH = Bit map of available displays:
+    ;   Bits 7 - 4 = Reserved
+    ;   Bit 3 = DFP is available
+    ;   Bit 2 = TV is available
+    ;   Bit 1 = CRT is available
+    ;   Bit 0 = LCD is available
+    ; CL = Bit map of displays that are driven:
+    ;   Bits 7 - 4 = Reserved
+    ;   Bit 3 = DFP is being driven
+    ;   Bit 2 = TV is being driven
+    ;   Bit 1 = CRT is being driven
+    ;   Bit 0 = LCD is being driven
+    ; DX = Other Flags (1 = Enable, 0 = Disable):
+    ;   Bits 7 - 1 = Reserved
+    ;   Bit 0 = Scaling
+    ; Return Registers:
+    ;   AX = Return Status (function not supported if AL != 5Fh):
+    ;      = 015Fh, Function supported but failed
+    ;      = 005Fh, Function supported and successful
+    
+    mov  al, 0x5f
+    iret
+
+MiscellaneousStatusHook:
+    ; Calling Registers:
+    ;   AX = 5F14h, System BIOS State Hook
+    ;   BX = 078Fh, Get Miscellaneous Status
+    ; Return Registers:
+    ;   AX = Return Status (function not supported if AL != 5Fh):
+    ;      = 015Fh, Function supported but failed
+    ;      = 005Fh, Function supported and successful
+    ;   CL = Bit map of dock, lid and AC status:
+    ;       Bits 7 - 3 = Reserved
+    ;       Bit 2 = 0, no AC power
+    ;             = 1, AC power active
+    ;       Bit 1 = 0, lid open
+    ;             = 1, lid closed
+    ;       Bit 0 = 0, not docked
+    ;             = 1, docked
+    mov  cl, (1<<2)|(0<<1)|(0)
+    mov  al, 0x5f
+    iret
+
+GetExtMemory:
+  ;mov   ax, 0x3C00      ; 15Mb above 1Mb
+  mov   ax, 0xF800      ; 62Mb above 1Mb
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+  iret
+
+CopyExtMemory:
+%if COPY_EXT_MEMORY
+  push    eax
+  push    ebx
+  push    ecx
+  push    esi
+  push    edi
+  push    ds
+  push    es
+
+  cld
+
+  and     ecx, 0000ffffh
+
+  mov     edi, [es:si+1fh] ; high byte of destination
+  shl     edi, 24
+  and     edi, 0xff000000
+  mov     eax, [es:si+1ah] ; low 24 bit destination address
+
+  and     eax, 00ffffffh   ; mask high bits
+  or      edi, eax
+
+  mov     ebx, [es:si+17h] ; high byte of destination
+  shl     ebx, 24
+  and     ebx, 0xff000000
+  mov     eax, [es:si+12h] ; low 24 bit destination address
+
+  and     eax, 00ffffffh   ; mask high bits
+  or      ebx, eax
+  mov     esi, ebx
+
+  ; enter unreal mode
+  cli             ;disable interrupts
+  lgdt    [cs:gdt]        ;load GDT
+  mov     eax,cr0
+  or      al,1    ;enable protected mode
+  mov     cr0,eax
+  jmp     short int15872  ;flush queue
+int15872:
+  mov     bx,8    ;selector
+  mov     ds,bx
+  mov     es,bx
+  and     al,0feh ;exit protected mode
+  mov     cr0,eax
+
+  shr     cx,1    ;convert to 32 bit words
+  cld
+  a32     rep movsd       ;do the block move
+  jnb     int15873
+  a32     movsw   ;move a 16 bit "orphan"
+int15873:
+
+  pop     es
+  pop     ds
+  sti             ;now interrupts are ok again
+  pop     edi
+  pop     esi
+  pop     ecx
+  pop     ebx
+  pop     eax
+  mov     ah,0    ;ok return
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+%else
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  or    ax, 0x0001          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+%endif
+  iret
+
+
+GetConfiguration:
+  push  ax
+  mov   ax, cs
+  mov   es, ax
+  mov   bx, bios_configuration_table
+  pop   ax
+  xor   ah, ah
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  iret
+
+GetEbdaSegment:
+  push	ax
+  push  ds
+  xor   ax, ax
+  mov   ds, ax
+  mov   ax, word [m_ebda]
+  mov   es, ax
+  pop   ds
+  pop		ax
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  iret
+
+DisableA20Gate:
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  in    al,92h
+  and   al,0xFD
+  out   92h,al 
+  xor   ah, ah
+
+  iret
+
+EnableA20Gate:
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  in    al,92h
+  or    al,2
+  out   92h,al 
+  xor   ah, ah
+  iret
+
+GetA20GateStatus:
+
+  xor   ah, ah
+  in    al, 92h
+  test  al, 2
+  jz    A20GateOff
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  mov   al, 1               ; Gate A20 on
+  iret
+
+A20GateOff:
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE          ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  mov   al, 0               ; Gate A20 off
+  iret
+
+QueryA20GateSupport:
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE      ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  xor   ah, ah
+  mov   bx, 0x0002          ; Gate A20 supported via port 0x92
+  iret
+
+EisaReadSlotConfigInfo:
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  or    ax, 0x0001          ; set carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  mov   ah, 0x80            ; invalid slot number
+  iret
+
+EisaReadFuncConfigInfo:
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  or    ax, 0x0001          ; set carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  mov   ah, 0x81            ; invalid function number
+  iret
+
+KeyPressHook:
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  or    ax, 0x0001          ; set carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  iret
+
+GetAboveMem:
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE      ; clear carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  mov   ax, 0x3C00      ; 15Mb above 1Mb
+  mov   bx, 0xFF00      ;  ahead 16Mb border
+  mov   cx, ax
+  mov   dx, bx
+
+  iret
+
+GetE820:
+
+  wbinvd
+
+%if SERIAL_DEBUG
+  push  es
+  call  SendWord
+  push  ':'
+  call  SendChar
+  push  edi
+  call  SendDword
+  push  ' '
+  call  SendChar
+  push  ebx
+  call  SendDword
+  push  mes_crlf
+  call  SendTxt
+%endif
+
+  push	ds
+  mov   ax, cs
+
+  mov   ds, ax            ; table segment
+
+  mov   eax, edx          ; copy 'SMAP'  
+  mov   edx, ecx          ; store size of buffer for result
+
+  push  di                ; store buffer offset
+  push  eax               ; store eax - 'SMAP' to return
+  push  esi
+
+  mov   eax, dword [cs:E820Pointer]
+  add   eax, dword [cs:E820Length]     ; eax - last address of E820 table
+
+  cmp   ebx, 0
+  je    GetE820Start
+
+  ; continue to fill E820 buffer from ebx
+  mov   esi, ebx          ; table offset
+  and   esi, 0x0000FFFF   ; mask segment, consist in F-seg
+  jmp   FillE820BufferLoop
+
+GetE820Start:
+  mov   esi, dword [cs:E820Pointer] ; table offset
+  and   esi, 0x0000FFFF   ; mask segment, consist in F-seg
+
+FillE820BufferLoop:
+
+%if SERIAL_DEBUG
+  push  ds
+  call  SendWord
+  push  ':'
+  call  SendChar
+  push  esi
+  call  SendDword
+  push  mes_crlf
+  call  SendTxt
+%endif
+
+  push  ecx
+  mov   ecx, 20            ; copy 20 bytes - size of one E820 record
+
+  ;copy one record
+%if 1
+  cld
+  rep   movsb
+%else
+  push  eax
+  
+  mov   eax, dword [ds:si+4]
+  mov   dword [es:di+4], eax
+  push  eax
+  call  SendDword
+  mov   eax, dword [ds:si]
+  mov   dword [es:di], eax
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  add   si, 8
+  add   di, 8
+
+  mov   eax, dword [ds:si+4]
+  mov   dword [es:di+4], eax
+  push  eax
+  call  SendDword
+  mov   eax, dword [ds:si]
+  mov   dword [es:di], eax
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  add   si, 8
+  add   di, 8
+
+  mov   eax, dword [ds:si]
+  mov   dword [es:di], eax
+  push  eax
+  call  SendDword
+  push  mes_crlf
+  call  SendTxt
+
+  add   si, 4
+  add   di, 4
+
+  pop   eax
+%endif
+  pop   ecx
+
+  sub   ecx, 20           ; size of buffer for result
+  cmp   ecx, 20
+  jae   FillE820BufferLoop
+
+  or    esi, 0x000F0000   ; restore F-seg
+  cmp   esi, eax
+  je    GetE820Complete   ; all records copied
+
+  mov   ebx, esi          ; offset to continue from
+  jmp   GetE820Exit
+
+GetE820Complete:  
+
+  xor   ebx, ebx          ; all done
+
+GetE820Exit:  
+  pop   esi
+  pop   eax               ; restore eax - 'SMAP' to return
+  pop   di                ; restore buffer offset
+  pop	  ds
+  sub   edx, ecx          ; initial buffer size - current buffer size = bytes actually copied
+  mov   ecx, edx
+
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+6]
+  and   ax, 0xFFFE      ; clear carry
+  ;or    ax, 0x0001       ; set carry
+  mov   word [ss:bp+6], ax
+  pop   ax
+  pop   bp
+
+  iret
+
+EnableDisablePointerDevice:
+  cmp   bx, 1
+  jz    EnablePointerDevice
+  cmp   bx, 0
+  jz    DisablePointerDevice
+
+  push  bp
+  mov   bp, sp
+  or    word [ss:bp+6], 0x0001  ; set carry
+  pop   bp
+  mov   ah, 1       ; invalid funcion
+  iret
+
+  ; nothing to do, just return success
+  EnablePointerDevice:
+  DisablePointerDevice:
+    push  bp
+    mov   bp, sp
+    and   word [ss:bp+6], 0xFFFE   ; clear carry
+    pop   bp
+    mov   ah, 0       ; successful
+    iret      
+
+SetPointerDeviceResolution:
+  ; nothing to do, just return success
+  push  bp
+  mov   bp, sp
+  and   word [ss:bp+6], 0xFFFE  ; clear carry
+  pop   bp
+  mov   ah, 0       ; successful
+  iret      
+
+InitPointerDevice:
+; nothing to do, just return success
+  push  bp
+  mov   bp, sp
+  and   word [ss:bp+6], 0xFFFE  ; clear carry
+  pop   bp
+  mov   ah, 0       ; successful
+  iret        
+
+SetPointerDeviceHandler:
+  mov   ax, es
+  cmp   ax, 0
+  jnz   PointerDeviceHandlesEsNonZero
+  cmp   bx, 0
+  jz    SetPointerDeviceHandlerExit         ; es:bx = 0000:0000 -> cancel, just exit
+
+PointerDeviceHandlesEsNonZero:  
+
+  push  ds
+  push  0x0008          ; status
+  push  0x0000          ; x-data
+  push  0x0010          ; y-data
+  push  0x0000          ; reserved
+
+  xor   ax, ax
+  mov   ds, ax
+  mov   word [m_ioofs], bx
+  mov   word [m_ioseg], es
+
+  call  far [m_ioofs]
+
+  pop   ax
+  pop   ax
+  pop   ax
+  pop   ax
+  pop   ds
+
+  SetPointerDeviceHandlerExit:
+  push  bp
+  mov   bp, sp
+  and   word [ss:bp+6], 0xFFFE   ; clear carry
+  pop   bp
+  mov   ah, 0       ; successful
+
+  iret        
+
+;; ==================================================================================
+;; Int 16 Entry point - Keyboard Services
+;; ==================================================================================
+ALIGN 32
+Int16:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x16
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+	sti								;enable interrupts
+
+%if SERIAL_DEBUG 
+%if DEBUG_PRINT_INT
+%if 0
+  push  mes_int
+  call  SendTxt
+  push  0x16
+  call  SendByte
+  push  ' '
+  call  SendChar
+  push  ax
+  call  SendWord
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+%endif
+
+  push	bx
+	push	cx
+	push	dx
+	push	ds
+	
+	xor		dx,dx					;access BIOS segment
+	mov		ds,dx
+
+	add		dl,ah					;command code
+	jz		kb_get					;AH=00: get key
+	dec		dx
+	jz		kb_check				;AH=01: check if key available
+	dec		dx
+	jz		kb_shift				;AH=02: return shift status
+	dec		dx
+	jz		kb_rate					;AH=03: set repetition rate
+	dec		dx
+	dec		dx
+	jz		kb_write				;AH=05: place scan code in buffer
+	sub		dl,11
+	jz		kb_extrd				;AH=10: extended read
+	dec		dx
+	jz		kb_extst				;AH=11: extended status
+	dec		dx
+	jz		kb_extsh				;AH=12: extended shift status
+kb_exit:
+
+	pop		ds
+	pop		dx
+	pop		cx
+	pop		bx
+
+	iret
+
+;; ==================================================================================
+;; Int 17 Entry point - Printer Services
+;; ==================================================================================
+ALIGN 32
+Int17:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x17
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+	sti								;reenable interrupts
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x17
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  push	ds						;save registers
+	push	si
+	push	bx
+	push	cx
+	push	dx
+	mov		bx,ax					;save AX	
+	xor		ax,ax					;access BIOS segment
+	mov		ds,ax
+	cmp		dx,3					;max port ?
+	jae		lp_exit					;:return
+	mov		si,dx					;-> table index
+	mov		cl,[si+m_lptime]		;get time-out value
+	shl		si,1
+	mov		dx,[si+m_lpio]			;get I/O port base
+	and		dx,dx					;0 -> not present
+	jz		lp_exit
+	mov		al,bh					;get command code
+	and		al,al
+	jz		lp_out					;AH=0 -> output character
+	dec		ax
+	jz		lp_init					;AH=1 -> initialize
+	dec		ax
+	jz		lp_stat					;AH=2 -> get status
+lp_exit:
+	mov		al,bl					;restore AL
+	pop		dx						;restore registers
+	pop		cx
+	pop		bx
+	pop		si
+	pop		ds
+
+	iret
+
+;; ==================================================================================
+;; Int 18 Entry point - BootStrap
+;; ==================================================================================
+ALIGN 32
+Int18:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x18
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+	;display message "No boot device..."
+%if SERIAL_DEBUG
+  push  mes_no_boot_device
+  call  SendTxt
+%endif
+
+  push  ax
+  push  bx
+  push  cx
+  push  dx
+  push  bp
+  push  es
+
+  mov   ah, 0x03      ; get cursor position
+  mov   bh, 0x00
+  int   0x10        
+
+  mov   ah, 0x13      ; write string
+  mov   al, 0x01      ; update cursor after write
+  mov   bh, 0x00      ; page number
+  mov   bl, 0x07      ; attributes
+; mov   dh, 0x00      ; row to write (stays from get cursor position)
+; mov   dl, 0x00      ; column to write (stays from get cursor position)
+  push  cs
+  pop   es
+  mov   bp, mes_no_boot_device
+  xor   cx, cx
+calculate_string_length:  
+  cmp   byte [es:bp], 0
+  je    int18_reach_eol
+  inc   cx
+  inc   bp
+  jmp   calculate_string_length
+
+int18_reach_eol:  
+  mov   bp, mes_no_boot_device
+  int   10h
+
+  pop   es
+  pop   bp
+  pop   dx
+  pop   cx
+  pop   bx
+  pop   ax
+
+	mov		ah,0	;get a keystroke
+	int		16h
+
+  ; here some actions should be placed if want to change boot device
+
+  ;set return point - int 19
+  push  bp
+  mov   bp, sp
+  mov   word [ss:bp+2], Int19
+  mov   word [ss:bp+4], cs
+  pop   bp
+
+	iret
+
+mes_no_boot_device:
+  db  'No boot device, replace media and',13,10,'press any key...',13,10,0
+
+%ifndef  LegacyBiosRomInt13
+;; ==================================================================================
+;; Int 19 Entry point - BootStrap
+;; ==================================================================================
+ALIGN 32
+Int19:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x19
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+  sti
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x19
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  ;mov		byte [m_fdcnt],36	;spin down drive A: after 2 seconds
+
+	mov		dl,80h				;drive C:
+	mov		cx,3				  ;retry count
+	call	bootdrv				;try to boot
+
+  jb    bootdrv_failed
+
+  iret
+
+bootdrv_failed:
+
+	int		18h					  ;display "No boot device" message
+	jmp		Int19
+
+	;
+	; Try to boot operating system from drive DL, CX retries
+	;
+bootdrv:
+
+	call	ResetDiskSystem
+	;push	2
+	;call	WaitSomeSec
+
+  ; 1 - check for boot device type
+
+  cmp   word [cs:BootDeviceType], BBS_BEV_DEVICE
+  jne   not_bev_boot
+
+  ; use BEV
+
+  cmp   word [cs:bev_seg], 0
+  je    bootdrv9
+  cmp   word [cs:bev_ofs], 0
+  je    bootdrv9
+
+  ; launch BEV
+%if SERIAL_DEBUG
+  push  mes_BEV
+  call  SendTxt
+%endif
+
+	call 	far [cs:bev_ofs]					;call BEV
+
+  ; should never return here
+  jmp   bootdrv9
+
+not_bev_boot:
+
+  cmp   word [cs:BootDeviceType], BBS_HARDDISK
+  jne   not_harddrive_boot
+
+	push	cx
+	xor		ax,ax				;$0000:$7c00 = destination address
+	mov		es,ax
+	mov		bx,7c00h
+
+  mov		ax,0201h			;read, 1 sector
+	mov		cx,0001				;cylinder 0, sector 1
+	mov		dh,0				;head 0
+	int		13h					;try to read boot sector
+	pop		cx
+	jnb		bootdrv2			;:ok
+
+	push	ax
+	mov		ah,0				;reset disk system
+	int		13h
+	pop		ax					;restore status
+	;loop	bootdrv				;try 3 times
+	dec		cx
+	jnz		bootdrv
+
+not_harddrive_boot:
+  ; some other boot procedure to be placed here
+  ; else - exit with error
+
+bootdrv9:
+
+  stc
+	ret							;return, didn't work	
+	
+	; check boot sector signature
+	
+bootdrv2:
+
+	cmp		word [es:7dfeh],0aa55h
+	jnz		bootdrv9			;:no
+
+	jmp		0:7c00h			;jump to boot sector
+
+%else
+;; ==================================================================================
+;; Int 19 Entry point - BootStrap, with Int13Smm
+;; ==================================================================================
+ALIGN 32
+Int19:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x19
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+  sti
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x19
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+  mov	cx,3				  ;retry count
+  call	bootdrv				;try to boot
+
+  jb    bootdrv_failed
+  iret
+
+bootdrv_failed:
+  int		18h					  ;display "No boot device" message
+  jmp		Int19
+
+	;
+	; Try to boot operating system from drive DL, CX retries
+	;
+bootdrv:
+  ; 1 - check for boot device type
+  cmp   word [cs:BootDeviceType], BBS_CDROM
+  jne   not_cdrom_boot
+
+  ; 2 - CD/DVD
+  mov	ax, CD_DVD_BOOT_EVENT
+  mov	dl, 0xF0		; cdrom drive number 
+  int	13h
+  jb	bootdrv9		; fail to boot from cd/dvd
+  jmp	0:7c00h			; jump to boot sector
+
+not_cdrom_boot:
+  cmp   word [cs:BootDeviceType], BBS_HARDDISK
+  jne   not_harddrive_boot
+  ; 3 - HDD:
+  mov	dl,80h				; First Harddrive
+
+  push	cx
+  xor	ax, ax				; $0000:$7c00 = destination address
+  mov	es, ax
+  mov	bx, 7c00h
+
+  mov	ax, 0201h			; read, 1 sector
+  mov	cx, 0001			; cylinder 0, sector 1
+  mov	dh, 0				; head 0
+  int	13h				; try to read boot sector
+  pop	cx
+  jnb	bootdrv2			; ok
+
+  dec		cx
+  jnz		bootdrv
+
+not_harddrive_boot:
+  ; 3 - other device:
+  ; some other boot procedure to be placed here
+  ; else - exit with error
+bootdrv9:
+  stc
+  ret							;return, didn't work	
+	
+  ; check boot sector signature
+bootdrv2:
+  cmp	word [es:7dfeh], 0aa55h
+  jnz	bootdrv9			; no
+
+  jmp		0:7c00h			;jump to boot sector
+%endif
+
+mes_BEV:
+  db    13,10,'BEV',13,10,0
+
+;; ==================================================================================
+;; Int 1A Entry point
+;; ==================================================================================
+
+ALIGN 32
+Int1A:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x1A
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+%if 0
+  push  mes_int
+  call  SendTxt
+  push  0x1a
+  call  SendByte
+  push  ' '
+  call  SendChar
+  push  ax
+  call  SendWord
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+%endif
+
+	cmp		ah,0b1h				;PCI
+	jnz		int_1A_rtc
+
+  pushad						;build stack frame
+	mov		bp,sp
+	mov		ah,0				;command code -> vector
+	cmp		al,0fh				;max command
+	ja		pci_badc0			;:bad
+	add		ax,ax
+	mov		si,ax
+	call 	[cs:si+pci_vec]		;dispatch command
+pci_i1a2:
+	jb		pci_i1a4			;:error
+	mov		al,0				;ok status
+	and		byte [ss:bp+_efl],0feh	;clear carry flag
+pci_i1a3:
+	mov		byte [ss:bp+_eax+1],al	;return status code -> AH
+
+	popad
+
+	iret
+
+int_1A_rtc:
+
+        sti             ;enable interrupts
+        push    ds
+        push    bx
+        xor     bx,bx   ;BIOS segment
+        mov     ds,bx
+        cmp     ah,7
+        ja      int1a_err       ;:bad command code
+        mov     bl,ah
+        shl     bx,1
+        cli             ;disable interrupts
+        jmp     [cs:bx+rtc_int1atab]        ;dispatch function 
+	iret
+
+;; ==================================================================================
+;; Int 1B Entry point - Keyboard Break - dummy
+;; ==================================================================================
+
+Int1b:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x1b
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x1b
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+	iret
+
+;; ==================================================================================
+;; Int 1C Entry point - Periodic Timer - dummy
+;; ==================================================================================
+
+Int1c:
+%if 0
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x1c
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+%endif
+
+%if ENABLE_USB_KEY_REPEAT
+  push  ax
+  push  bx
+  push  ds
+  push  ecx
+
+  xor   ax, ax
+  mov   ds, ax
+
+  ; check if USB key is currently pressed
+  cmp   byte [m_usb_key], 0
+  je    no_usb_keypress
+
+  ; check delay timer
+  mov   al, byte [m_usb_delay]
+  dec   al
+  jnz   store_usb_delay
+
+  ; delay timer = 0, do Irq1 and re-arm
+  mov   bl, byte [m_usb_key]
+  mov   ecx, 'BSU$'
+  int   0x09
+
+  mov   al, 0x04     ; 0.5sec
+store_usb_delay:
+  mov   byte [m_usb_delay], al
+no_usb_keypress:  
+  pop   ecx
+  pop   ds
+  pop   bx
+  pop   ax
+%endif  
+	iret
+
+;; ==================================================================================
+;; Int 1D Entry point - Video Parameter Table - dummy next to TinyBios
+;; ==================================================================================
+
+Int1d:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x1d
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x1d
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+	iret
+
+;; ==================================================================================
+;; Int 1E Entry point - FDD Parameters - dummy
+;; ==================================================================================
+
+Int1e:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x1e
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x1e
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+	iret
+
+;; ==================================================================================
+;; Int 1F Entry point - Video Graphics Characters - dummy next to TinyBios
+;; ==================================================================================
+
+Int1f:
+;++++++++++++++++++++++++++++++++
+%if	DEBUG_IRQ
+  push  0x1f
+  push  mes_int
+  call  SendTxt
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+;+++++++++++++++++++++++++++++++++
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x1f
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif  
+%endif
+
+	iret
+
+;; ==================================================================================
+;; Int 40 Entry point - FDD Services
+;; ==================================================================================
+ALIGN 32
+Int40:
+	sti
+%if SERIAL_DEBUG
+%if DEBUG_PRINT_INT
+  push  mes_int
+  call  SendTxt
+  push  0x40
+  call  SendByte
+  push  mes_crlf
+  call  SendTxt
+%endif
+%endif
+
+	push	ds						;save registers
+	push	es
+	pusha
+	mov		bp,sp					;access to stack frame
+
+	xor		di,di					;access BIOS segment
+	mov		ds,di
+	cmp		ah,0					;reset doesn't care about drive #
+	jz		int40_1
+
+	cmp		dl,0					;valid drive ?
+	jnz		fd_badcmd				;:bail out
+
+int40_1:
+	cmp		byte [m_fdmed0],0		;drive doesn't exist ?
+	jz		fd_badcmd				;:bail out
+	mov		di,ax					;command -> index
+	shr		di,8
+	add		di,di
+	and		byte [ss:bp+18h],0feh		;clear return carry
+	cmp		di,19h*2				;limit command vector
+	jae		fd_badcmd
+
+	jmp		[cs:di+fd_vectab]		;jump to command
+
+%if VGA_2_CONSOLE
+;; ==================================================================================
+;; Int 10 Hook
+;; ==================================================================================
+
+Align 32
+Int10Hook:
+
+  cmp   ah, 0x0e
+  jne   no_int10_hook
+
+  push  ax
+  push  cx
+  push  dx
+  mov   cl, al
+  VGA_2_CONSOLE_AL  cl
+  pop   dx
+  pop   cx
+  pop   ax
+
+no_int10_hook:  
+
+%if 0
+  jmp   far [cs:f_int10ofs]
+%else
+  pushfw
+  call  far [cs:f_int10ofs]
+  iret
+%endif
+
+%endif
+
+;; ==================================================================================
+;; Default dummy int
+;; ==================================================================================
+
+; если мы сюда попали, значит VideoBios не смог установить свой обработчик на INT_10:
+Int10_error:
+    push    ax
+    push    mes_int10_err	    ;
+    call    SendTxt		    ; "Int10_err "
+    call    SendWord		    ;
+    
+    mov	    ax, 1
+    mov	    ax, word [ss:bp + 2]    ;
+    or	    ax, 0x0001		    ; set carry
+    mov	    word [ss:bp + 2], ax    ;
+    iret
+
+mes_int10_err:
+  db  'Int10_err ', 13, 10, 0
+
+
+ALIGN 32
+DefaultInt:
+  sti
+
+  push  bp			    ;
+  mov   bp, sp			    ;
+
+  push  ds			    ;
+  pusha				    ;
+  push	ecx			    ;
+
+; сообщение в COM-порт: ("Dummy %04x:%04x %04x", segment, offset, data);
+  push  mes_dummy		    ;
+  call  SendTxt			    ; "Dummy "
+
+  mov   si, word [ss:bp + 2]	    ; offset
+  mov   ax, word [ss:bp + 4]	    ; segment
+
+  mov	ds, ax			    ;
+  push	ax			    ;
+  call  SendWord		    ; адрес возврата: сегмент
+  call	SendColon		    ;
+  push	si			    ;
+  call  SendWord		    ; адрес возврата: смещение
+  call	SendSpace		    ;
+  mov   cx, word [si - 2]	    ;
+
+  push	cx			    ;
+  push  cx			    ;
+  call  SendWord		    ; содержимое адреса возврата: возможно, команда INT xx (0xcdXX)
+
+  push  mes_crlf		    ;
+  call  SendTxt			    ;
+
+  ; pause ~ 1sec
+  mov   ecx, 0x00100000		    ;
+delay_in_dummy:
+  in    al, iowait		    ;
+  loop  delay_in_dummy, ecx	    ;
+
+  pop	cx			    ;
+
+  cmp	cx, 0x10cd		    ; INT 10?
+  je	dummy_2			    ; да - обходим рекурсию
+;	----------------------------
+; выводим на экран чрез сервис int10 на случай отсутствия COM-порта:
+;
+;VIDEO - WRITE STRING (AT and later,EGA)
+;
+;AH = 13h
+;AL = write mode
+;
+;bit 0:
+;Update cursor after writing
+;
+;bit 1:
+;String contains alternating characters and attributes
+;
+;bits 2-7:
+;Reserved (0).
+;BH = page number.
+;BL = attribute if string contains only characters.
+;CX = number of characters in string.
+;DH,DL = row,column at which to start writing.
+;ES:BP -> string to write
+;
+;Return: Nothing
+;
+  mov   al, 1			    ; al - mode
+  mov   ah, 0x13		    ; output string
+  mov   bh, 0x00		    ; page #
+  mov   bl, 0x07		    ; color
+  mov	dx, 0x0101		    ; (x,y)
+  mov	cx, 5			    ; strlen("dummy");
+  push	cs			    ; 
+  pop	es			    ; string segment
+  mov	bp, mes_dummy		    ; string offset
+  int   0x10			    ;
+dummy_loop:
+  jmp	short	dummy_loop	    ; на этой стадии останавливаемся
+
+dummy_2:
+  pop	ecx			    ;
+  popa				    ;
+  pop   ds			    ;
+  pop   bp			    ;
+;	----------------------------
+; это обращение к INT10, которого еще нет, возвращаем ошибку:
+  push  bp			    ;
+  mov   bp, sp			    ;
+  push  ax			    ;
+  mov   ax, word [ss:bp + 6]	    ;
+  or    ax, 0x0001		    ; set carry
+  mov   word [ss:bp+6], ax	    ;
+  pop   ax			    ;
+  pop   bp			    ;
+
+  iret				    ;
+
+mes_dummy:
+  db  'Dummy ',0
+
+
+;; ==================================================================================
+;; Other functions
+;; ==================================================================================
+
+;%if SERIAL_DEBUG
+SendChar:
+  push  bp
+  mov   bp, sp
+
+%if SERIAL_2_VGA
+  push  ax
+  push  bx
+  push  ds
+  xor   ax, ax
+  mov   ds, ax
+  cmp   byte [cs:VgaSet], 1
+  jne   skip_int10_not_available
+
+  mov   ax, word [ss:bp+4]  ; al - character
+  mov   ah, 0x0e      ; TTY output
+  mov   bh, 0x00      ; page #
+  mov   bl, 0x55      ; color
+  int   0x10
+skip_int10_not_available:
+  pop   ds
+  pop   bx
+  pop   ax
+%else
+  push  dx
+  push  ax
+  mov   ax, word [ss:bp+4]
+  xchg  ah, al
+SendChar_wait:
+	mov		dx,TTYS0_LSR
+	in		al,dx
+	test	al,20h
+	je		SendChar_wait
+	mov		dx,TTYS0_TBR
+  xchg  ah, al
+	out		dx,al
+  pop   ax
+  pop   dx  
+%endif  
+  pop   bp
+  ret   2
+
+SendSpace:
+    push    word ' '
+    call    SendChar
+    ret
+
+SendColon:
+    push    word ':'
+    call    SendChar
+    ret
+
+
+SendByte:
+  push  bp
+  mov   bp, sp
+
+  push  ax
+  mov   ax, word [ss:bp+4]
+	mov		ah,al
+	and		al,0xf0
+	shr		al,4
+	cmp		al,0x9
+	jle		SendByte_1
+;	sub		al,0xA
+	add 	al,'A'- 0x30 - 0xA
+SendByte_1:  
+	add		al,0x30 ; to ASCII
+  push  ax
+  call  SendChar
+	mov		al,ah
+	and		al,0xf
+	cmp		al,0x9
+	jle		SendByte_2
+;	sub		al,0xA
+	add		al,'A' - 0x30 - 0xA
+SendByte_2:  
+	add		al,0x30
+  push  ax
+  call  SendChar
+ 
+  pop   ax
+  pop   bp
+  ret   2
+
+SendWord:
+  push  bp
+  mov   bp, sp
+  push  ax
+  mov   ax, word [ss:bp+4]
+  xchg  ah, al
+  push  ax
+  call  SendByte
+  xchg  ah, al
+  push  ax
+  call  SendByte
+  pop   ax
+  pop   bp
+  ret   2
+
+SendDword:
+  push  bp
+  mov   bp, sp
+  push  eax
+  mov   eax, dword [ss:bp+4]
+  rol   eax, 16
+  push  ax
+  call  SendWord
+  rol   eax, 16
+  push  ax
+  call  SendWord
+  pop   eax
+  pop   bp
+  ret   4
+
+SendTxt:
+  push  bp
+  mov   bp, sp
+  push  si
+  push  ax
+  mov   si, word [ss:bp+4]
+SendTxtLoop:  
+  mov   al, byte [cs:si]
+  cmp   al, 0
+  jz    SendTxtExit
+  push  ax
+  call  SendChar
+  inc   si
+  jmp   SendTxtLoop
+SendTxtExit:  
+  pop   ax
+  pop   si
+  pop   bp
+  ret   2
+;%endif		; SERIAL_DEBUG
+
+cs_waitbx:
+	inc		bx
+	jmp		cs_wbx8
+	
+cs_wbx1:	
+	mov		cx,62			;62 refresh cycles per millisecond
+cs_wbx2:	
+	in		al,port61
+	and		al,10h
+	mov		ah,al
+cs_wbx3:	
+	in		al,port61		;wait for refresh bit to change state
+	and		al,10h
+	cmp		al,ah
+	jz		cs_wbx3
+	loop	cs_wbx2			;:another iteration
+cs_wbx8:	
+	dec	bx					;another millisecond ?
+	jnz	cs_wbx1
+cs_wbx9:
+	ret
+
+;++++++++++++++++++++++++++++++++++++++++
+printIsr:
+	mov	al, 0xb
+	out	pic0, al
+	in	al, pic0
+	push	ax
+	push	0x20
+	call	SendChar
+	call	SendByte
+	ret
+;++++++++++++++++++++++++++++++++++++++++
+
+
+;;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;; INT10 Hook
+;; ==================================================================================
+times 0x5f00 - ($-$$) db 0
+orig_int10_off:	dw  0
+orig_int10_seg:	dw  0
+
+int10_Hook:
+%if 1
+    pusha
+    push    ax
+    push    mes_int10_hook
+    call    SendTxt
+    call    SendWord
+    popa
+%endif
+    jmp	    far [cs:orig_int10_off]
+;   jmp	    0xc000:0x0014
+;;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+;; ==================================================================================
+;; Compatibility16 Functions
+;; ==================================================================================
+times 0x6000 - ($-$$) db 0
+
+
+
+
+
+%if POSTCODE_DEBUG
+  push  ax
+  shl   ax, 8
+  or    ax, 0xC000
+  pop   ax
+%endif
+
+
+;+++++++++++++++++++++++++++
+%if 0
+    push    ax
+    push    mes_func
+    call    SendTxt
+    in      al, pic0+1
+    push    ax
+    call    SendByte
+    in      al, pic1+1
+    push    ax
+    call    SendByte
+    pop	    ax
+%endif
+;+++++++++++++++++++++++++++
+
+
+	cmp		ax, Legacy16InitializeYourself
+	jne		not_Legacy16InitializeYourself
+
+	;;*********************************************************
+	;; 0 - InitializeYourself
+	;;*********************************************************
+POST:
+
+;++++++++++++++++++++++++++++++++++++++++
+;  	push  mes_liy
+;	call  SendTxt
+;	call	printIsr
+;++++++++++++++++++++++++++++++++++++++++
+
+
+%if SERIAL_DEBUG  
+  push  mes_liy
+  call  SendTxt
+%endif
+
+%if POSTCODE_DEBUG
+  push  ax
+  mov   ax, 0xCF00
+  out   0x80, ax
+  pop   ax
+%endif
+
+  ; Initialize Interrupt Vectors Table
+  cli
+	xor		eax, eax
+	mov   		ds, ax
+	mov		cx, 0x100					; 256 interrupt vectors
+cycle_init_default_int:
+	mov		word [eax], DefaultInt
+	add		eax, 2
+	mov		word [eax], 0xF000				; all handlers are in F-segment
+	add		eax, 2
+	loop	cycle_init_default_int
+
+	mov   eax, 0x00*4
+	mov   word [eax], IntException
+  add   eax, 2
+  mov   word [eax], 0xF000
+
+  mov   eax, 0x01*4
+  mov   word [eax], IntTrap
+  add   eax, 2
+  mov   word [eax], 0xF000 
+
+	mov		eax, 0x02*4
+	mov		word [eax], IntNMI    ; NMI
+  add   eax, 2
+  mov   word [eax], 0xF000
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+%if	1
+	mov		eax, 0x03*4
+	mov		word [eax], Int03    ; int03
+  add   eax, 2
+  mov   word [eax], 0xF000
+	mov		eax, 0x04*4
+	mov		word [eax], Int04    ; int04
+  add   eax, 2
+  mov   word [eax], 0xF000
+	mov		eax, 0x06*4
+	mov		word [eax], Int06    ; int06
+  add   eax, 2
+  mov   word [eax], 0xF000
+	mov		eax, 0x07*4
+	mov		word [eax], Int07    ; int07
+  add   eax, 2
+  mov   word [eax], 0xF000
+
+%endif
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+
+	mov		eax, 0x05*4
+	mov		word [eax], Int05     ; Int05 - Print Screen
+  add   eax, 2
+  mov   word [eax], 0xF000  
+
+set_irq_0:
+	mov		eax, 0x08*4
+	mov		word [eax], Irq0 	   	; Int08 = Irq0
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x09*4
+	mov		word [eax], Irq1  		; Int09 = Irq1
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x0a*4
+	mov		word [eax], Irq2  		; Int0a = Irq2
+  add   eax, 2
+  mov   word [eax], 0xF000  
+  	mov		eax, 0x0b*4
+	mov		word [eax], Irq3  		; Int0b = Irq3
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x0c*4
+	mov		word [eax], Irq4  		; Int0c = Irq4
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x0d*4
+	mov		word [eax], Irq5  		; Int0d = Irq5  
+  add   eax, 2
+  mov   word [eax], 0xF000  
+ 	 mov		eax, 0x0e*4
+	mov		word [eax], Irq6	    	; Int0e = Irq6
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x0f*4
+	mov		word [eax], Irq7  		; Int0f = Irq7
+  add   eax, 2
+  mov   word [eax], 0xF000  
+
+
+
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;
+;	дублируем обработчики прерываний на базу защищенного режима:
+;
+	mov		eax, 0x68*4
+	mov		word [eax], Irq0 	   	; Int68 = Irq0
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x69*4
+	mov		word [eax], Irq1  		; Int69 = Irq1
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x6a*4
+	mov		word [eax], Irq2  		; Int6a = Irq2
+  add   eax, 2
+  mov   word [eax], 0xF000  
+  	mov		eax, 0x6b*4
+	mov		word [eax], Irq3  		; Int6b = Irq3
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x6c*4
+	mov		word [eax], Irq4  		; Int6c = Irq4
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x6d*4
+	mov		word [eax], Irq5  		; Int6d = Irq5  
+  add   eax, 2
+  mov   word [eax], 0xF000  
+ 	 mov		eax, 0x6e*4
+	mov		word [eax], Irq6	    	; Int6e = Irq6
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x6f*4
+	mov		word [eax], Irq7  		; Int6f = Irq7
+  add   eax, 2
+  mov   word [eax], 0xF000  
+;
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+	mov		eax, 0x11*4
+	mov		word [eax], Int11 		; Int11
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x12*4
+	mov		word [eax], Int12 		; Int12
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x13*4
+	mov		word [eax], Int13 		; Int13
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x14*4
+	mov		word [eax], Int14 		; Int14
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x15*4
+	mov		word [eax], Int15 		; Int15
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x16*4
+	mov		word [eax], Int16 		; Int16
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x17*4
+	mov		word [eax], Int17 		; Int17
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x18*4
+	mov		word [eax], Int18 		; Int18
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x19*4
+	mov		word [eax], Int19 		; Int19
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x1A*4
+	mov		word [eax], Int1A 		; Int1A
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x1B*4
+	mov		word [eax], Int1b 		; Int1B
+  add   eax, 2
+  mov   word [eax], 0xF000
+	mov		eax, 0x1c*4
+	mov		word [eax], Int1c 		; Int1c
+  add   eax, 2
+  mov   word [eax], 0xF000
+	mov		eax, 0x1d*4
+	mov		word [eax], Int1d 		; Int1d
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x1E*4
+	mov		word [eax], fd_ptab 		; Int1E - FDD Parameters Table
+  add   eax, 2
+  mov   word [eax], 0xF000
+	mov		eax, 0x1f*4
+	mov		word [eax], Int1f 		; Int1f
+  add   eax, 2
+  mov   word [eax], 0xF000  
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;
+;	DEBUG:
+;
+	mov		eax, 0x10 * 4
+%if DEBUG_IRQ
+	mov		word [eax], tmpInt10 		; temp. Int10
+	add		eax, 2
+	mov		word [eax], 0xF000  
+%else
+	mov		word [eax], DefaultInt
+	add		eax, 2
+	mov		word [eax], 0xF000	
+%endif
+	jmp		set_irq_8		       ;	DEBUG
+;
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+	mov		eax, 0x40*4
+	mov		word [eax], Int40 		; Int40
+  add   eax, 2
+  mov   word [eax], 0xF000
+  
+%ifndef  LegacyBiosRomInt13
+	mov		eax, 0x41*4
+	mov		word [eax], hd_prm0		; Hard disk 0 parameters
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x46*4									
+	mov		word [eax], hd_prm1		; Hard disk 1 parameters
+%else
+	mov		eax, 0x41*4
+	mov		word [eax], 0			; Hard disk 0 parameters
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x46*4									
+	mov		word [eax], 0			; Hard disk 1 parameters
+%endif
+
+  add   eax, 2
+  mov   word [eax], 0xF000  
+  	mov   		eax, 0x4a*4
+	mov   		word [eax], Int4a		; Irq8 user hook
+  add   eax, 2
+  mov   word [eax], 0xF000
+
+set_irq_8:
+	mov		eax, 0x70*4
+	mov		word [eax], Irq8      ; Int70 = Irq8
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x71*4
+	mov		word [eax], Irq9      ; Int71 = Irq9
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x72*4  
+	mov		word [eax], Irq10     ; Int72 = Irq10
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x73*4
+	mov		word [eax], Irq11     ; Int73 = Irq11  
+  add   eax, 2
+  mov   word [eax], 0xF000  
+  mov		eax, 0x74*4
+	mov		word [eax], Irq12     ; Int74 = Irq12
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x75*4
+	mov		word [eax], Irq13     ; Int75 = Irq13
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x76*4
+	mov		word [eax], Irq14     ; Int76 = Irq14
+  add   eax, 2
+  mov   word [eax], 0xF000  
+	mov		eax, 0x77*4
+	mov		word [eax], Irq15     ; Int77 = Irq15  
+  add   eax, 2
+  mov   word [eax], 0xF000  
+
+
+
+;++++++++++++++++++++++++++++++++++++++++
+;	call	printIsr
+;++++++++++++++++++++++++++++++++++++++++
+	sti
+
+  ; get some info from EFI_TO_LEGACY16_INIT_TABLE
+  mov   eax, dword [es:bx+4]    ; HiPmmMemory
+  cmp   eax, 0
+  je    LIY_no_hi_pmm_memory
+  ;add   eax, dword [es:bx+8]    ; HiPmmMemoryLength
+  mov   dword [cs:PmmPoolExtendedAddress], eax
+LIY_no_hi_pmm_memory:
+  mov   eax, dword [es:bx+28]    ; LowPmmMemory
+  cmp   eax, 0
+  je    LIY_no_low_pmm_memory
+  ;add   eax, dword [es:bx+32]    ; LowPmmMemoryLength
+  mov   dword [cs:PmmPoolAddress], eax
+LIY_no_low_pmm_memory:
+
+	mov		word [m_devflg], EQUIPMENTLIST
+
+	; Init & test hardware
+	; init serial ports
+rs_test:
+	mov		ax,0101h							;init serial port time-out
+	mov		[m_rstime],ax
+	mov		[m_rstime+2],ax
+	
+	mov		di,m_rsio							;destination for I/O port value
+	mov		si, rs_ports						;port addresses
+rs_test1:
+
+	cs		lodsw								;get port address
+	and		ax,ax								;end of table ?
+	jz		rs_test3							;:end
+	xchg	dx,ax								;AX -> DX, points to scratch register
+	mov		ax,0aa55h
+	out		dx,al
+	out		iowait,ax							;invert bus
+	out		iowait,ax
+	in		al,dx
+	cmp		al,55h								;pattern ok ?
+	jnz		rs_test1							;:no, port not present, try next
+	and		dl,0f8h								;clear low bits of I/O address
+	mov		[di],dx								;write port address
+
+	inc		di
+	inc		di
+	add		byte [m_devflg+1],2					;increment serial port count
+	cmp		di,m_rsio+8							;space for more ports ?
+	jnz		rs_test1							;:yes
+rs_test3:
+	mov		dx,3								;init serial ports
+rs_test4:
+;	mov		ax,COM_INIT
+;	int		14h
+;	dec		dx
+;	jns		rs_test4
+
+	;
+	; Initialize floppy drive: detect FDC presence,
+	; reset FDC, turn on floppy motor, recalibrate
+	;
+	or		byte [m_devflg],1					;floppy drive present
+	mov		byte [m_fdmed0],17h				;drive A: present
+
+ 	;
+ 	; Initialize timers, DMA
+ 	;
+
+%if DMA_INIT_ENABLE
+post_tdma:
+	mov		si,tdmatab
+post_tdm0:
+	mov		dh,0
+post_tdm1:
+	cs		lodsw
+	cmp		ah,0ffh								;end of table ?
+	jz		post_tdm9
+	mov		dl,ah								;port address
+	out		dx,al								;write data
+	out		iowait,al							;I/O wait
+	jmp		post_tdm1
+post_tdm9:
+%endif
+
+%if 1
+;unmask irq0
+  push  ax
+  in    al, pic0+1
+  and   al, 0xfe
+  out   pic0+1, al
+  pop   ax
+%endif
+
+
+	; Initialize BDA
+
+; Some initialization takes place in LegacyBiosInitBda
+; So here should be added other required information
+
+  ; set base memory size
+  push  ds
+  xor   ax, ax
+  mov   ds, ax
+;  mov   word [m_lomem], 0x280   ; 640Kb of base memory
+  mov   word [m_lomem], 0x27f   ; 639Kb of base memory (0x0000 -0x9FBF RAM; 0x9FC0-0x9FFF EBDA)
+  pop   ds
+
+
+	; Initialize CMOS
+
+	mov		ah,cm_meml							;write base memory size to CMOS
+	mov		al,[m_lomem]
+	call	rtc_write
+	mov		al,[m_lomem+1]
+	mov		ah,cm_memh							;write low memory size
+	call	rtc_write
+
+  ; Init custom BDA field to be used by GetTableAddress
+  mov		word [m_misc_tbl], PMM_addr
+
+  ; Init EBDA address
+  mov   word [m_ebda], ebda_seg
+  mov   byte [ebda_seg*16], 1        ; ebda size = 1 kb
+
+  ; Store last PCI bus
+  mov   byte [cs:d_lastbus], PCI_LAST_BUS
+  
+  ; Enable A20Gate
+  ;mov   al,26h
+  mov   al, 2
+  out   92h,al 
+
+  ; Clear drive number
+  mov   byte [m_hdcnt], 0
+  ;mov   byte [cs:hd_top], 0
+
+%if 1 
+  ; Enable mouse controller
+  mov   dx, 0x64
+  mov   al, 0x20
+  out   dx, al          ; read KBC command register
+  mov   dx, 0x60
+  in    al, dx
+  mov   ah, al
+  and   ah, 0xDF        ; clear bit 5 - enable auxiliary device interface
+  or    ah, 0x01        ; set bit 0 - enable interrupts
+  and   ah, 0xEF        ; clear bit 4 - don't disable keyboard
+  mov   dx, 0x64
+  mov   al, 0x60
+  out   dx, al          ; write KBC command register
+  mov   dx, 0x60
+  mov   al, ah
+  out   dx, al
+%endif
+
+%if 1
+  ; set Timer1 refresh rate
+  mov   al, 54h
+  out   timer+3,al
+  mov   al, 0x12			; TICK_RATE
+  out   timer+1,al
+
+  ; set Timer0
+  call  tim_init
+%endif
+
+%if ENABLE_PNP
+  ; setup Pnp installation check structure
+    ; calculate checksum
+  mov   si, PnPInstallationCheck
+  movzx   cx, byte [cs:si+5]    ; length
+  xor   al, al
+calculate_PnP_checksum_loop:
+  add   al, byte [cs:si]
+  inc   si
+  loop  calculate_PnP_checksum_loop
+
+  clc
+
+  not   al
+  inc   al
+  mov   si, PnPInstallationCheck
+  mov   byte [cs:si+8], al      ; checksum
+    ; set pointer in $EFI table to Pnp installation check structure
+  mov   word [cs:PnPInstallationCheckOffset], PnPInstallationCheck
+%endif
+
+%if ENABLE_PMM
+  ; setup Pnp installation check structure
+    ; calculate checksum
+  mov   si, PMMInstallationCheck
+  movzx   cx, byte [cs:si+5]    ; length
+  xor   al, al
+calculate_PMM_checksum_loop:
+  add   al, byte [cs:si]
+  inc   si
+  loop  calculate_PMM_checksum_loop
+
+  clc
+
+  not   al
+  inc   al
+  mov   si, PMMInstallationCheck
+  mov   byte [cs:si+6], al      ; checksum
+%endif
+
+%if ENABLE_PCI_BIOS_32
+  ; calculate checksum
+  mov   si, bios_32hd
+  mov   cx, 16    ; length
+  xor   al, al
+calculate_PCI_BIOS_32_checksum_loop:
+  add   al, byte [cs:si]
+  inc   si
+  loop  calculate_PCI_BIOS_32_checksum_loop
+
+  clc
+
+  not   al
+  inc   al
+  mov   si, bios_32hd
+  mov   byte [cs:si+9], al      ; checksum
+%endif
+
+
+
+  mov		ax, 0					; return EFI_SUCCESS
+	retf
+
+not_Legacy16InitializeYourself:
+
+	;;*********************************************************
+	;; 1 - UpdateBBS
+	;;*********************************************************
+
+	cmp		ax, Legacy16UpdateBbs
+	jne		not_Legacy16UpdateBbs
+
+%if SERIAL_DEBUG
+  push  mes_update_bbs
+  call  SendTxt
+%endif
+
+  ; fill BbsTable fields and create one entry
+  mov   si, bx
+  add   si, 0x10          ; SIO data
+  add   si, 0x10          ; serial data
+  add   si, 0x0f          ; parallel data
+  add   si, 0x05          ; floppy
+  add   si, 0x01          ; mouse
+  add   si, 0x04          ; flags
+  add   si, 0x02          ; device path type
+  add   si, 0x02          ; PciIrqMask
+  add   si, 0x04          ; Number E820 entries
+  add   si, 8*1045        ; HDD_INFO
+
+  mov   ecx, dword [es:si]         ; NumberBbsEntries  
+  mov   di, si                     ; store segment&offset to NumberBbsEntries in es:di
+  add   si, 4
+  mov		eax, dword [es:si]         ; BbsTable
+
+%if SERIAL_DEBUG
+  push  mes_bbs_entries_number
+  call  SendTxt
+  push  ecx
+  call  SendDword
+  push  mes_crlf
+  call  SendTxt
+  push  mes_bbs_table_address
+  call  SendTxt
+  push  eax
+  call  SendDword
+  push  mes_crlf
+  call  SendTxt
+%endif
+
+  push  ds
+
+	mov		si, ax                  ; make [ds:si] to point to BbsTable
+	and		eax, 0ffff0000h
+	shr		eax, 4
+	mov		ds, ax
+
+%if SERIAL_DEBUG
+  ; dump bbs enties
+  push  ecx
+  push  si
+  push  eax
+
+dump_bbs_table_loop:  
+  ;BootPriority
+  mov   ax, word [si]
+  cmp   ax, BBS_IGNORE_ENTRY
+  je    skip_bbs_entry
+
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ' '
+  call  SendChar
+
+  ; Bus
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Device
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Function
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Class
+  mov   al, byte [si]
+  add   si, 1
+  push  ax
+  call  SendByte
+  push  ' '
+  call  SendChar
+  
+  ; SubClass
+  mov   al, byte [si]
+  add   si, 1
+  push  ax
+  call  SendByte
+  push  ' '
+  call  SendChar
+
+  ; MfgString
+  mov   ax, word [si]
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ':'
+  call  SendChar
+  mov   ax, word [si]
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ' '
+  call  SendChar
+
+  ; DeviceType
+  mov   ax, word [si]
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ' '
+  call  SendChar  
+
+  ; StatusFlags
+  mov   ax, word [si]
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ' '
+  call  SendChar  
+
+  ; BootHandler
+  mov   ax, word [si]
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ':'
+  call  SendChar
+  mov   ax, word [si]
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ' '
+  call  SendChar
+
+  ; DescString
+  mov   ax, word [si]
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ':'
+  call  SendChar
+  mov   ax, word [si]
+  add   si, 2
+  push  ax
+  call  SendWord
+  push  ' '
+  call  SendChar
+
+  ; InitPerReserved
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Irq13Handler
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Irq18Handler
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Irq19Handler
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Irq40Handler
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Drive Number
+  mov   al, byte [si]
+  add   si, 1
+  push  ax
+  call  SendByte
+  push  ' '
+  call  SendChar
+
+  ; Irq41Handler
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; Irq46Handler
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; IBV1
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  ; IBV2
+  mov   eax, dword [si]
+  add   si, 4
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+
+  push  mes_crlf
+  call  SendTxt
+
+  jmp   dump_bbs_entry_complete
+
+skip_bbs_entry:
+  add   si, 0x45
+
+dump_bbs_entry_complete:
+  dec   ecx
+  jnz   dump_bbs_table_loop
+
+  pop   eax
+  pop   si
+  pop   ecx
+%endif
+
+%if UPDATE_BBS_TABLE
+  ; all will be changed to BBS_LOWEST_PRIORITY
+
+  push  cx
+  push  bx
+  push  si
+
+  xor   bx, bx          ; bx to store number of active BBS entries
+
+update_bbs_priorities:  
+
+  ; if GOP driver enabled, set all BBS boot options to BBS_DO_NOT_BOOT_FROM
+  push  ax
+  push  ds
+  xor   ax, ax
+  mov   ds, ax
+  mov   al, byte [gop_enable]
+  cmp   al, 1
+  pop   ds
+  pop   ax
+  jne   skip_change_bbs_priority_on_gop
+  mov   word [si], BBS_DO_NOT_BOOT_FROM
+  jmp   skip_current_bbs_entry
+skip_change_bbs_priority_on_gop:
+
+  mov   ax, word [si]     ; current entry priority
+  cmp   ax, BBS_IGNORE_ENTRY
+  je    skip_current_bbs_entry
+  cmp   ax, BBS_UNPRIORITIZED_ENTRY
+  jne   skip_current_bbs_entry
+
+  mov   word [si], BBS_LOWEST_PRIORITY
+  inc   bx
+
+skip_current_bbs_entry:
+  add   si, 0x45          ; size of 1 BBS entry
+
+  loop  update_bbs_priorities
+
+;  cmp   bx, 0
+;  jne   already_got_active_bbs_entries
+
+	push	ax
+  mov   al, byte [cs:type_amt1]
+  cmp   al, 0
+  jne   update_bbs_skip_init_amt
+;  jmp   $
+  call  InitAMT
+update_bbs_skip_init_amt:
+	pop		ax
+
+  ; if GOP driver enabled, set all BBS boot options to BBS_DO_NOT_BOOT_FROM
+  push  ax
+  push  ds
+  xor   ax, ax
+  mov   ds, ax
+  mov   al, byte [gop_enable]
+  cmp   al, 1
+  pop   ds
+  pop   ax
+  je    skip_ide_bbs_priority_on_gop
+
+  ; check if we can create some BBS table entries based on IDE-devices init
+  cmp   byte [cs:type_dev0], 0
+  je    no_primary_master_device
+
+  mov   word [si], BBS_LOWEST_PRIORITY
+  add   si, 2
+  movzx eax, byte [cs:prim_bus]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:prim_dev]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:prim_func]
+  mov   dword [si], eax
+  add   si, 4
+  mov   al, byte [cs:prim_class]
+  mov   byte [si], al
+  add   si, 1
+  mov   al, byte [cs:prim_subclass]
+  mov   byte [si], al
+  add   si, 1
+  mov   ax, model_dev0
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  movzx ax, byte [cs:type_dev0]
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, 0 ;0900h         ; status
+  mov   word [si], ax
+  add   si, 2
+
+  mov   ax, boot_ipl0  
+  cmp   byte [cs:type_dev0], BBS_HARDDISK
+  je    primary_master_got_boot_hanler
+  mov   ax, boot_bev
+  cmp   byte [cs:type_dev0], BBS_BEV_DEVICE
+  je    primary_master_got_boot_hanler
+  mov   ax, 0
+primary_master_got_boot_hanler:  
+  mov   word [si], ax
+  add   si, 2
+
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, model_dev0
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+
+  add   si, 0x14      ; AssignedDriveNumber
+  mov   byte [si], 0x80
+
+  ; skip all other fields
+  add   si, 0x11
+  inc   bx
+
+no_primary_master_device:
+  cmp   byte [cs:type_dev1], 0
+  je    no_primary_slave_device
+
+  mov   word [si], BBS_LOWEST_PRIORITY
+  add   si, 2
+  movzx eax, byte [cs:prim_bus]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:prim_dev]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:prim_func]
+  mov   dword [si], eax
+  add   si, 4
+  mov   al, byte [cs:prim_class]
+  mov   byte [si], al
+  add   si, 1
+  mov   al, byte [cs:prim_subclass]
+  mov   byte [si], al
+  add   si, 1
+  mov   ax, model_dev1
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  movzx ax, byte [cs:type_dev1]
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, 0 ;0900h         ; status
+  mov   word [si], ax
+  add   si, 2
+
+  mov   ax, boot_ipl1  
+  cmp   byte [cs:type_dev1], BBS_HARDDISK
+  je    primary_slave_got_boot_hanler
+  mov   ax, boot_bev
+  cmp   byte [cs:type_dev1], BBS_BEV_DEVICE
+  je    primary_slave_got_boot_hanler
+  mov   ax, 0
+primary_slave_got_boot_hanler:  
+  mov   word [si], ax
+  add   si, 2
+
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, model_dev1
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+
+  add   si, 0x14      ; AssignedDriveNumber
+  mov   byte [si], 0x81
+
+  ; skip all other fields
+  add   si, 0x11
+  inc   bx
+
+no_primary_slave_device:
+
+  cmp   byte [cs:type_dev2], 0
+  je    no_secondary_master_device
+
+  mov   word [si], BBS_LOWEST_PRIORITY
+  add   si, 2
+  movzx eax, byte [cs:prim_bus]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:prim_dev]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:prim_func]
+  mov   dword [si], eax
+  add   si, 4
+  mov   al, byte [cs:prim_class]
+  mov   byte [si], al
+  add   si, 1
+  mov   al, byte [cs:prim_subclass]
+  mov   byte [si], al
+  add   si, 1
+  mov   ax, model_dev2
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  movzx ax, byte [cs:type_dev2]
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, 0 ;0900h         ; status
+  mov   word [si], ax
+  add   si, 2
+
+  mov   ax, boot_ipl2  
+  cmp   byte [cs:type_dev2], BBS_HARDDISK
+  je    secondary_master_got_boot_hanler
+  mov   ax, boot_bev
+  cmp   byte [cs:type_dev2], BBS_BEV_DEVICE
+  je    secondary_master_got_boot_hanler
+  mov   ax, 0
+secondary_master_got_boot_hanler:  
+  mov   word [si], ax
+  add   si, 2
+
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, model_dev2
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+
+  add   si, 0x14      ; AssignedDriveNumber
+  mov   byte [si], 0x82
+
+  ; skip all other fields
+  add   si, 0x11
+  inc   bx
+
+no_secondary_master_device:
+  cmp   byte [cs:type_dev3], 0
+  je    no_secondary_slave_device
+
+  mov   word [si], BBS_LOWEST_PRIORITY
+  add   si, 2
+  movzx eax, byte [cs:prim_bus]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:prim_dev]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:prim_func]
+  mov   dword [si], eax
+  add   si, 4
+  mov   al, byte [cs:prim_class]
+  mov   byte [si], al
+  add   si, 1
+  mov   al, byte [cs:prim_subclass]
+  mov   byte [si], al
+  add   si, 1
+  mov   ax, model_dev3
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  movzx ax, byte [cs:type_dev3]
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, 0 ;0900h         ; status
+  mov   word [si], ax
+  add   si, 2
+
+  mov   ax, boot_ipl3  
+  cmp   byte [cs:type_dev3], BBS_HARDDISK
+  je    secondary_slave_got_boot_hanler
+  mov   ax, boot_bev
+  cmp   byte [cs:type_dev3], BBS_BEV_DEVICE
+  je    secondary_slave_got_boot_hanler
+  mov   ax, 0
+secondary_slave_got_boot_hanler:  
+  mov   word [si], ax
+  add   si, 2
+
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, model_dev3
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+
+  add   si, 0x14      ; AssignedDriveNumber
+  mov   byte [si], 0x83
+
+  ; skip all other fields
+  add   si, 0x11
+  inc   bx
+
+no_secondary_slave_device:
+
+  test  byte [cs:type_amt1], AMT_DEVICE_PRESENT
+  jz    no_amt_device
+
+  mov   word [si], BBS_LOWEST_PRIORITY
+  add   si, 2
+  movzx eax, byte [cs:amt_bus]
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:amt_devfunc]
+	shr		eax, 3
+  mov   dword [si], eax
+  add   si, 4
+  movzx eax, byte [cs:amt_devfunc]
+	and		eax, 0x00000007
+  mov   dword [si], eax
+  add   si, 4
+  mov   al, byte [cs:amt_class]
+  mov   byte [si], al
+  add   si, 1
+  mov   al, byte [cs:amt_subclass]
+  mov   byte [si], al
+  add   si, 1
+  mov   ax, model_amt_slave
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  mov		ax, BBS_BEV_DEVICE
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, 0         ; status
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, boot_amt_bev
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, model_amt_slave
+  mov   word [si], ax
+  add   si, 2
+  mov   ax, cs
+  mov   word [si], ax
+  add   si, 2
+
+  add   si, 0x14      ; AssignedDriveNumber
+  mov   byte [si], 0x85
+
+  ; skip all other fields
+  add   si, 0x11
+  inc   bx
+
+no_amt_device:
+skip_ide_bbs_priority_on_gop:
+
+  ; update number of BBS entries
+%if SERIAL_DEBUG
+  push  bx
+  call  SendWord  
+  push  mes_bbs_entries_added
+  call  SendTxt
+%endif
+
+  mov   eax, dword [es:di]
+  add   ax, bx
+  mov   dword [es:di], eax
+
+already_got_active_bbs_entries:  
+  pop   si
+  pop   bx
+  pop   cx
+
+%endif  
+  pop   ds
+
+UpdateBBSExit:
+%if SERIAL_DEBUG
+  push  mes_exit_update_bbs
+  call  SendTxt
+%endif
+
+  mov		ax, 0x0000				; return EFI_SUCCESS
+	retf
+
+not_Legacy16UpdateBbs:
+
+	;;*********************************************************
+	;; 2 - PrepareToBoot
+	;;*********************************************************
+
+	cmp		ax, Legacy16PrepareToBoot
+	jne		not_Legacy16PrepareToBoot
+
+%if SERIAL_DEBUG
+  push  mes_legacy16_prepare_to_boot
+  call  SendTxt
+%endif
+
+  ; set actual last pci bus
+  push  ax
+  mov   al, byte [cs:LastPciBus]
+  mov   byte [cs:d_lastbus], al
+  pop   ax
+
+  ; restore video mode
+  push  ax
+  mov   ah, 0x00          ; set mode
+  mov   al, 3             ; text mode 80x25
+  int   0x10
+  pop   ax
+  
+  ; es:bx points to EFI_TO_COMPATIBILITY16_BOOT_TABLE
+  mov   si, bx
+  add   si, 0x10          ; SIO data
+  add   si, 0x10          ; serial data
+  add   si, 0x0f          ; parallel data
+  add   si, 0x05          ; floppy
+  add   si, 0x01          ; mouse
+  add   si, 0x04          ; flags
+  add   si, 0x02          ; device path type
+  add   si, 0x02          ; PciIrqMask
+  add   si, 0x04          ; Number E820 entries  
+  add   si, 8*1045        ; HDD_INFO
+
+  mov   ecx, dword [es:si]         ; NumberBbsEntries  
+  add   si, 4
+  mov		eax, dword [es:si]         ; BbsTable
+
+  push  ds
+
+	mov		si, ax                  ; make [ds:si] to point to BbsTable
+	and		eax, 0ffff0000h
+	shr		eax, 4
+	mov		ds, ax
+
+  push  bx
+  xor   bx, bx            ; bx = boot priority
+
+  ; find highest priority (0)
+
+ptb_find_highest_priority:
+  push  si
+  push  cx
+
+ptb_find_highest_priority_loop:
+  cmp   word [si], BBS_DO_NOT_BOOT_FROM
+  jae   ptb_not_sane_priority
+  cmp   bx, word [si]
+  jne   ptb_not_sane_priority
+
+  ; BBS 0 priotity found, 'll be boot from it
+
+  jmp   ptb_found_bbs_record
+
+ptb_not_sane_priority:
+  add   si, 0x45
+  loop  ptb_find_highest_priority_loop
+
+  pop   cx
+  pop   si
+
+  ; commented - only 0 priority is valid (should be set by LegacyBiosPlatformProtocol->PrepareToBoot)
+;  inc   bx          ; search next priority
+;  cmp   bx, BBS_DO_NOT_BOOT_FROM
+;  jb    ptb_find_highest_priority
+
+  ; fail to find any appropriate bbs record, exit with error
+  jmp   prepare_to_boot_exit_error
+
+ptb_found_bbs_record:
+%ifdef  LegacyBiosRomInt13
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;		for Int13Smm:
+;
+    push es
+    mov     ax, COMM_BUFER_SEGMENT
+    mov     es, ax
+    mov	    ax, si
+    mov	    [es:COMM_BUFFER_OFFSET+CommBuffer.BbsEntryOffset], ax
+    mov	    ax, ds
+    mov	    [es:COMM_BUFFER_OFFSET+CommBuffer.BbsEntrySegment], ax
+    ;save device type for int 19 handler
+    mov   ax, word [si+0x14]       ; ax = DEVICE_TYPE
+    mov   word [cs:BootDeviceType], ax
+    mov   word [es:COMM_BUFFER_OFFSET+CommBuffer.BbsDeviceType], ax
+
+    pop es
+
+    push    ds
+    xor     ax, ax
+    mov     ds, ax
+    mov	    ax, COMM_BUFFER_OFFSET
+    mov	    word [m_Int13Private], ax
+    mov	    ax, COMM_BUFER_SEGMENT
+    mov	    word [m_Int13Private + 2], ax
+    pop	    ds
+;   APM-SMI: transfer Int13Private address to APM-handler
+    call int13Smi
+
+    pop   cx
+    pop   si
+
+    jmp   prepare_to_boot_exit_ok
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+%else
+;####################################################################################################
+;		for Int13 orig:
+;
+  ; [ds:si] points to lowest-priority found record
+  ; don't forget to pop cx & si
+
+  pop   cx
+
+	; save drive number
+	mov		al, byte [si+0x34]	; al = AssignedDriveNumber
+	mov		byte [cs:BootDriveNum], al
+
+  mov   ax, word [si+0x14]       ; ax = DEVICE_TYPE
+
+  ; check if it's an BBS_BEV_DEVICE. if so - check and save BEV to be invoked later from Int19
+  cmp   ax, BBS_BEV_DEVICE
+  jne   ptb_not_bev_device
+
+  ; save device type
+  mov   word [cs:BootDeviceType], ax
+
+  ; get BEV
+  mov   ax, word [si+0x18]      ; boot handler offset
+  mov   [cs:bev_ofs], ax
+  mov   ax, word [si+0x1a]      ; boot handler segment
+  mov   [cs:bev_seg], ax
+
+  ; if booting from AMT device - set its attribute
+  test  byte [cs:type_amt1], AMT_DEVICE_PRESENT
+  jz    ptb_no_boot_from_amt
+	cmp		word [si+0x18], boot_amt_bev
+	jne		ptb_no_boot_from_amt
+  mov   al, byte [cs:type_amt1]
+  or    al, BOOT_FROM_AMT
+  mov   byte [cs:type_amt1], al
+ptb_no_boot_from_amt:  
+
+  pop   si
+
+  ; also, we should set all BCV to let system know about HDDs
+  push  si
+  push  cx
+
+  ; Clear drive number
+  push  ax
+  push  ds
+  xor   ax, ax
+  mov   ds, ax
+  mov   byte [m_hdcnt], 0
+  pop   ds
+  pop   ax
+
+  ; restore Int13
+  push  ax
+  push  ds
+  xor   ax, ax
+  mov   ds, ax
+  mov   word [0x13*4], Int13
+  mov   word [0x13*4+2], cs
+  pop   ds
+  pop   ax
+
+ptb_set_bcv_from_bev_loop:
+  cmp   word [si+0x14], BBS_HARDDISK
+  jne   ptb_skip_non_bcv_entry_from_bev
+
+  ; get and invoke BCV
+  mov   ax, word [si+0x18]      ; boot handler offset
+  mov   [cs:bcv_ofs], ax
+  mov   ax, word [si+0x1a]      ; boot handler segment
+  mov   [cs:bcv_seg], ax
+
+  cmp   dword [cs:bcv_ofs], 0
+  je    ptb_skip_non_bcv_entry_from_bev
+
+  mov   ax, cs
+  mov   es, ax
+  mov   di, PnPInstallationCheck
+  mov   bx, 0ffffh
+  mov   dx, 0ffffh
+  mov   ax, 04h                   ; connect as IPL
+  call 	far [cs:bcv_ofs]		      ; setup bcv
+
+ptb_skip_non_bcv_entry_from_bev:
+  add   si, 0x45
+  loop  ptb_set_bcv_from_bev_loop
+
+  pop   cx
+  pop   si
+
+  jmp   prepare_to_boot_exit_ok
+
+ptb_not_bev_device:
+  ; check if it's an BBS_HARDDISK. if so - check and invoke BCV to set this device as IPL
+  cmp   ax, BBS_HARDDISK
+  jne   ptb_not_harddisk
+
+  ; save device type
+  mov   word [cs:BootDeviceType], ax
+
+  ; get and invoke BCV
+  mov   ax, word [si+0x18]      ; boot handler offset
+  mov   [cs:bcv_ofs], ax
+  mov   ax, word [si+0x1a]      ; boot handler segment
+  mov   [cs:bcv_seg], ax
+
+  pop   si
+
+  ; check if BCV really exist
+  cmp   dword [cs:bcv_ofs], 0
+  je    prepare_to_boot_exit_error
+
+%if RECONNECT_IPL  
+
+  ; Clear drive number & restore Int13
+  push  ax
+  push  ds
+  xor   ax, ax
+  mov   ds, ax
+  mov   byte [m_hdcnt], 0
+  mov   word [0x13*4], Int13
+  mov   word [0x13*4+2], cs
+  pop   ds
+  pop   ax
+
+  ; invoke BCV
+  mov   ax, cs
+  mov   es, ax
+  mov   di, PnPInstallationCheck
+  mov   bx, 0ffffh
+  mov   dx, 0ffffh
+  mov   ax, 04h                   ; connect as IPL
+  call 	far [cs:bcv_ofs]		      ; setup bcv
+%endif
+
+  jmp   prepare_to_boot_exit_ok
+;####################################################################################################
+%endif
+
+ptb_not_harddisk:
+  ; further devices types to be handled here
+  
+  ; if none - exit with error
+  pop   si
+
+prepare_to_boot_exit_error:  
+
+  pop   bx
+  pop   ds
+  mov		ax, 0x8000				; return some error
+	retf
+
+prepare_to_boot_exit_ok:  
+
+%if 1
+  pushad
+  ; re-init RTC
+  call  rtc_ini
+
+  ; set RTC periodic interrupt
+  push  cx
+  call  rtc_uip
+  pop   cx
+
+  cli
+
+  mov   ah,cm_a 							;read status A
+  call  rtc_read
+  or    al,20h                ; set oscillator on
+  or    al,06h  							;
+  and   al,0f6h               ; set 1.024 kHz rate
+  call  rtc_write
+
+  mov   ah,cm_b 							;read status B
+  call  rtc_read
+  or    al,40h  							; enable periodic interrupt
+  call  rtc_write
+
+  in    al,pic1+1       					;read mask register
+  and   al,0feh 							;enable RTC interrupt (8)
+  out   pic1+1,al
+
+  in    al,pic0+1       					;read mask register
+  and   al,0fbh 							;enable cascade interrupt
+  out   pic0+1,al
+
+  sti  
+  popad
+%endif
+
+%ifndef  LegacyBiosRomInt13
+	; from now on should use translated drives numbers thus all bcv be invoked to this moment
+	mov		byte [cs:transl_flag], 1
+%endif
+
+  pop   bx
+  pop   ds
+  mov		ax, 0x0000				; return EFI_SUCCESS
+	retf
+
+not_Legacy16PrepareToBoot:
+
+	;;*********************************************************
+	;; 3 - Boot
+	;;*********************************************************
+
+	cmp		ax, Legacy16Boot
+	jne		not_Legacy16Boot
+
+%if 1
+  ; reEnable keyboard controller
+
+%macro w_kbd 2
+        mov cx,0f000h
+%%m1:   waitio
+        waitio
+        waitio
+        waitio
+        in al,64h
+        test al,%1
+;       TTY_AL %2
+        loopnz %%m1
+%%m2:
+%endmacro 
+  
+  mov al,0AAh
+  out 64h,al
+  w_kbd 2,31h
+  w_kbd 1,32h
+  in al,60h
+
+  mov al,0cbh
+  out 64h,al
+  w_kbd 2,33h
+  mov al,1
+  out 60h,al
+  w_kbd 2,34h
+
+  mov al,60h
+  out 64h,al
+  w_kbd 2,35h
+  mov al,61h
+  out 60h,al
+  w_kbd 2,36h
+  mov al,0ffh
+  out 60h,al
+  w_kbd 2,37h
+  w_kbd 1,38h
+  in al,60h
+  w_kbd 1,39h
+  in al,60h
+  
+  in    al,pic0+1
+  and   al,0fdh   				; + keyboard Irq1
+  out   pic0+1,al
+
+%endif
+
+  int		19h
+
+	mov		ax, 0x0000				; return EFI_SUCCESS
+	retf
+
+not_Legacy16Boot:
+
+	;;*********************************************************
+	;; 4 - RetrieveLastBootDevice
+	;;*********************************************************
+
+  cmp		ax, Legacy16RetrieveLastBootDevice
+	jne		not_Legacy16RetrieveLastBootDevice
+
+;	mov		ax, 0x0000				; return EFI_SUCCESS
+	mov		ax, 0x8000				; return EFI_TBD
+	retf
+
+not_Legacy16RetrieveLastBootDevice:
+
+	;;*********************************************************
+	;; 5 - DispatchOpRom
+	;;*********************************************************
+
+	cmp		ax, Legacy16DispatchOprom
+	jne		not_Legacy16DispatchOprom
+
+	mov		si, bx
+
+	mov		cx, word [es:si+4]			        ; OpRom segment
+
+  ; if VideoROM - check for GOP driver enable
+  cmp   cx, 0xC000
+  jne   not_video_rom
+
+  ; if GOP driver enabled - skip VideoROM dispatch
+  push  ds
+  push  ax
+  xor   ax, ax
+  mov   ds, ax
+  mov   al, byte [gop_enable]
+  cmp   al, 1
+  pop   ax
+  pop   ds
+  je    DispatchExit
+
+not_video_rom:
+
+  ; set video to TextMode (#3)
+  push  ax
+  mov   ax, 0003
+  int   10h
+  pop   ax
+
+  push  ax
+  push  cx
+  mov al,0AAh
+  out 64h,al
+  w_kbd 2,31h
+  w_kbd 1,32h
+  in al,60h
+
+  mov al,0cbh
+  out 64h,al
+  w_kbd 2,33h
+  mov al,1
+  out 60h,al
+  w_kbd 2,34h
+
+  mov al,60h
+  out 64h,al
+  w_kbd 2,35h
+  mov al,61h
+  out 60h,al
+  w_kbd 2,36h
+  mov al,0ffh
+  out 60h,al
+  w_kbd 2,37h
+  w_kbd 1,38h
+  in al,60h
+  w_kbd 1,39h
+  in al,60h
+  pop   cx
+  pop   ax
+
+  mov   ds, cx
+
+  mov   bx, word [es:si+6]              ; Pci Bus/Device/Function
+  xchg  bl, bh
+
+  mov   di, word [es:si+2]              ; PnpInstallationCheckOffset  
+  mov   cx, word [es:si]                ; PnpInstallationCheckSegment
+  mov   es, cx
+
+
+%if SERIAL_DEBUG  
+  push  mes_dispatch
+  call  SendTxt
+%endif
+
+  push  fs
+  xor   ax, ax
+  mov   fs, ax
+
+  ; check signature
+  cmp   word [0], 0xaa55
+  jne   failed_to_dispatch_oprom
+
+  ; invoke ROM
+	mov 	word [fs:m_ioofs],3					;offset - call vector
+	mov 	word [fs:m_ioseg],ds				;segment
+
+%if SERIAL_DEBUG  
+  push  mes_call
+  call  SendTxt
+  push  word [fs:m_ioseg]
+  call  SendWord
+  push  ' '
+  call  SendChar
+  push  word [fs:m_ioofs]
+  call  SendWord
+%endif
+
+  mov   ax, bx                    ; Bus in high, Device/Function in low
+
+  mov   bx, word [fs:m_ioseg]     ;0xffff                ; not an ISA PnP device
+  mov   dx, 0xffff                ; not an ISA PnP device
+
+  push  ds
+  push	fs
+
+  cli
+	call 	far [fs:m_ioofs]					;call ROM
+  sti
+
+  pop	  fs
+  pop   ds
+
+%if SERIAL_DEBUG  
+  push  mes_iok
+  call  SendTxt
+  push  ' '
+  call  SendChar
+  push  ax
+  call  SendWord
+  push  mes_crlf
+  call  SendTxt  
+%endif
+
+%if CONNECT_IPL_AFTER_ROM
+  ; check if IPL device was invoked
+  and   ax, 0x0030
+  cmp   ax, 0x0020              ; check if IPL device were installed
+  jne   ipl_device_not_installed
+
+  ; check for PnP Expantion Header
+  push  es
+  push  si
+
+  mov   eax, dword [fs:m_ioofs]
+  rol   eax, 16
+  mov   es, ax
+  rol   eax, 16
+  mov   si, ax
+  sub   si, 3
+  add   si, 0x1a          ; offset to Expansion Header Structure
+  mov   si, word [es:si]
+
+process_expansion_header:
+
+  ; check if Expansion Header present
+  cmp   word [es:si], '$PnP'
+  jne   no_expansion_header_found
+
+  ; check and save Boot Connection Vector
+
+  mov   ax, word [es:si+16h]        ; Boot Connection Vector
+  cmp   ax, 0
+  je    no_bcv_found
+
+  ; save BCV
+  mov   word [fs:m_ioseg], es
+  mov   word [fs:m_ioofs], ax
+
+  ; setup BCV
+  push  es
+  push  si
+  push  di
+  push  bx
+  push  dx
+
+  mov   ax, cs
+  mov   es, ax
+  mov   di, PnPInstallationCheck
+  mov   bx, 0ffffh
+  mov   dx, 0ffffh
+  mov   ax, 04h                   ; connect as IPL
+
+  call 	far [fs:m_ioofs]		; setup bcv
+
+  pop   dx
+  pop   bx
+  pop   di
+  pop   si
+  pop   es
+
+no_bcv_found:  
+
+  mov   ax, word [es:si+6]
+  cmp   ax, 0
+  je    no_expansion_header_found
+
+  ; next header exist, process it
+  mov   si, ax
+  jmp   process_expansion_header
+
+no_expansion_header_found:  
+  pop   si
+  pop   es
+
+%if ENUMERATE_CDROMS
+  ; enumerate ATAPI devices thru int15
+  mov   ax, 0xf100
+  mov   ebx, "ICHA"
+  mov   ecx, "MORO"
+  int   0x15
+%endif
+
+ipl_device_not_installed:
+%endif
+
+  pop   fs
+
+  mov   ax, ds
+  cmp   ax, 0xC000
+  jne   DispatchExit
+
+%if SERIAL_2_VGA
+  mov   byte [cs:VgaSet], 1
+%endif
+
+%if SERIAL_DEBUG    
+  ; load russian font
+  push  mes_lrf
+  call  SendTxt
+%endif
+
+  push  es
+  push  bp
+
+  mov   ax, cs
+  mov   es, ax
+  mov   bp, _VgaFont
+  mov   ax, 0x1100
+  mov   cx, 256
+  mov   dx, 0
+  mov   bx, 0x1000
+  int   0x10
+
+  pop   bp
+  pop   es
+
+%if VGA_2_CONSOLE
+  ; replace Int10 with own hook
+  push  ax
+  push  ds
+
+  ; save original int10 handler
+  xor   ax, ax
+  mov   ds, ax
+  mov   ax, word [0x10*4]
+  mov   word [cs:f_int10ofs], ax
+
+
+  mov   ax, word [0x10*4+2]
+  mov   word [cs:f_int10seg], ax
+
+
+  mov   word [0x10*4], Int10_error  ; обработчик на случай, если штатный из VideoBios не установился
+
+  mov   ax, word [cs:f_int10seg]
+  cmp	ax, 0F000h
+  jz	not_replace_int10
+
+  ; replace int10 handler with own hook
+  mov   word [0x10*4], Int10Hook
+not_replace_int10:
+  mov   word [0x10*4+2], cs
+
+  pop   ds
+  pop   ax
+%endif
+
+DispatchExit: 
+
+  mov   bx, 0x0000        ; no non-BBS compliant drives found
+	mov		ax, 0x0000				; return EFI_SUCCESS
+	retf
+
+failed_to_dispatch_oprom:
+  pop   fs
+%if SERIAL_DEBUG
+  push  mes_fail_to_dispatch_oprom
+  call  SendTxt
+%endif
+	mov		ax, 0x8000				; return some error
+	retf
+
+not_Legacy16DispatchOprom:
+
+	;;*********************************************************
+	;; 6 - GetTableAddress
+	;;*********************************************************
+
+	cmp		ax, Legacy16GetTableAddress
+	jne		not_Legacy16GetTableAddress
+
+  xor   ax, ax
+  mov   ds, ax
+  mov   ax, word [m_misc_tbl]     ; get current pointer to free memory to allocate
+
+%if 0  
+  not   dx
+  inc   dx
+  and   ax, dx                    ; make required alignment - undebugged
+  dec   dx
+  not   dx
+  add   ax, dx
+%endif
+
+  and   ax, 0xFFF0                ; make 16-byte alignment
+  add   ax, 0x10
+
+  clc
+  add   ax, cx
+  jc    GetTableAddressInsufficientMemory
+
+  mov   word [m_misc_tbl], ax     ; store new pointer
+ 
+  and		bx, 0x03
+	cmp		bx, 2									; try to allocate memory in E segment only
+	je		GetTableAddressInsufficientMemory
+
+  mov   bx, 0F000h             ; allocate memory in F-segment (preffered)
+  mov   ds, bx
+
+  sub   ax, cx
+  mov   bx, ax
+
+	mov		ax, 0x0000				; return EFI_SUCCESS
+	retf
+
+GetTableAddressInsufficientMemory:
+  clc
+  mov		ax, 0x8009				; return EFI_OUT_OF_RESOURCES
+	retf
+
+not_Legacy16GetTableAddress:
+
+	;;*********************************************************
+	;; 7 - SetKeyboardLeds
+	;;*********************************************************
+
+	cmp		ax, Legacy16SetKeyboardLeds
+	jne		not_Legacy16SetKeyboardLeds
+
+	mov		ax, 0x0000				; return EFI_SUCCESS
+	retf
+
+not_Legacy16SetKeyboardLeds:
+
+	;;*********************************************************
+	;; 8 - InstallPciHandler
+	;;*********************************************************
+
+	cmp		ax, Legacy16InstallPciHandler
+	jne		not_Legacy16InstallPciHandler
+
+%ifdef  LegacyBiosRomInt13
+  jmp skip_hd_init
+%else
+
+  ; check if this is secondary controller. if so, skip init
+  ;mov   al, byte [es:bx+1]
+  ;test  al, 0x04
+  ;jnz   skip_hd_init
+
+  ; update addresses such reported by INSTALL_PCI_HANDLER structure
+  mov   cl, byte [es:bx]            ; PciBus
+  mov   byte [cs:prim_bus], cl
+  mov   cl, byte [es:bx+1]          ; PciDevFunc
+  shr   cl, 3
+  mov   byte [cs:prim_dev], cl  
+  mov   cl, byte [es:bx+1]          ; PciDevFunc
+  and   cl, 0x07
+  mov   byte [cs:prim_func], cl
+  mov   cl, byte [es:bx+3]
+  mov   byte [cs:prim_class], cl    ; PciClass
+  mov   cl, byte [es:bx+4]
+  mov   byte [cs:prim_subclass], cl ; PciSubclass
+
+  mov   cl, byte [es:bx+6]          ; primary Irq
+  mov   byte [cs:prim_irq], cl
+  mov   cx, word [es:bx+8]          ; primary Control
+  mov   word [cs:prim_ctrl], cx
+  mov   cx, word [es:bx+10]         ; primary Base
+  mov   word [cs:prim_base], cx
+  mov   cx, word [es:bx+12]         ; primary BusMaster
+  mov   word [cs:prim_bmaster], cx
+
+  mov   cl, byte [es:bx+14]         ; secondary Irq
+  mov   byte [cs:secd_irq], cl
+  mov   cx, word [es:bx+16]         ; secondary Control
+  mov   word [cs:secd_ctrl], cx
+  mov   cx, word [es:bx+18]         ; secondary Base
+  mov   word [cs:secd_base], cx
+  mov   cx, word [es:bx+20]         ; secondary BusMaster
+  mov   word [cs:secd_bmaster], cx
+
+
+;;+++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  mes_InitAmt
+  call  SendTxt
+%endif
+;;+++++++++++++++++++++++++++++++++++++++++++++
+
+;;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;; call HdInit
+;;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+;;+++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  mes_HdInit
+  call  SendTxt
+%endif
+;;+++++++++++++++++++++++++++++++++++++++++++++
+
+  push  ds
+  push  es
+  xor   ax, ax
+  mov   ds, ax
+  mov   es, ax
+  call  hd_init
+  pop   es
+  pop   ds
+
+;;+++++++++++++++++++++++++++++++++++++++++++++
+%if DEBUG_IRQ
+  push  mes_iok
+  call  SendTxt
+%endif
+;;+++++++++++++++++++++++++++++++++++++++++++++
+
+%endif
+
+
+;;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+skip_hd_init:
+
+  mov		ax, 0x0000			; return EFI_SUCCESS
+	retf
+  ;;*********************************************************
+
+not_Legacy16InstallPciHandler:
+
+	mov		ax, 0x0000			; return EFI_SUCCESS
+	retf
+
+;;*********************************************************
+
+  ; messages section
+mes_crlf:
+    db    0x0d, 0x0a, 0x00
+mes_packet:
+    db    'Packet',13,10,0
+
+mes_InitAmt:
+    db    13, 10, '^InitAmt', 0
+mes_HdInit:
+    db    13, 10, '^HdInit', 13, 10, 0
+mes_irq_hd:
+    db    13, 10, '^IrqHd', 13, 10, 0
+mes_func:
+    db    13, 10, '^Cmp16Func: ',0
+mes_int10_hook:
+    db	    13, 10, 'Int10Hook: ', 0
+
+mes_pnp_func:
+  db    'PnP function ',0
+mes_int:
+  db    13, 10, '^Int',0
+mes_irq:
+  db    13, 10, '^Irq ',0
+mes_liy:
+;--  db    13, 10, 'LegacyInitializeYourself',0
+  db    13, 10, '^LInitSelf',0
+mes_dispatch:
+  db    'Dispatch',13,10,0
+mes_call:
+  db    'Call ',0
+mes_iok:
+  db    'iOk ',0
+mes_lrf:
+  db    'Load russian font',13,10,0
+mes_update_bbs:
+  db    'Update Bbs',13,10,0
+mes_bbs_entries_number:
+  db    'Number of BBS entries: ',0
+mes_bbs_table_address:
+  db    'BBS table address: ',0
+mes_no_apropriate_bbs_entry_found:
+  db    'Failed to find any suitable BBS entry to boot, exiting',13,10,0
+mes_priority:
+  db    'Priority: ',0
+mes_device_type:
+  db    'Device type: ',0
+mes_drive_num:
+  db    'Assigned drive number: ',0
+mes_legacy16_prepare_to_boot:
+  db    'Legacy16 PrepareToBoot',13,10,0
+mes_create_own_bbs_entry:
+  db    'Create default BBS entry',13,10,0
+mes_exit_update_bbs:
+  db    'Exit UpdateBbs',13,10,0
+mes_bbs_entries_added:
+	db		' BBS entries added',13,10,0
+mes_BCV:
+  db    'BCV: ',0
+mes_fail_to_dispatch_oprom:
+  db    'Fail to dispatch OpROM',13,10,0
+mes_process:
+  db    'Process scancode ',0
+mes_pmm:
+  db    'Call PMM',13,10,0
+mes_pmm_allocate:
+  db    'PMM Allocate',13,10,0
+mes_pmm_find:
+  db    'PMM Find',13,10,0
+mes_pmm_deallocate:
+  db    'PMM Deallocate',13,10,0
+mes_pmm_error:
+  db    'PMM Error',13,10,0
+;+++++++++++++++++++++++++++++++++++++++++++++++++
+mes_isr:
+	db	13, 10, 'Isr = ', 0
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++
+BITS 32  
+ALIGN 32
+PnPEntryPoint32:
+
+  jmp   PnPEntryPoint
+
+BITS 16 
+ALIGN 32
+PnPEntryPoint:
+
+  mov   ah, 0x82      ; return FUNCTION_NOT_SUPPORTED
+  retf
+
+BITS 16 
+ALIGN 32
+%if ENABLE_PMM
+PMMEntryPoint:
+
+%if SERIAL_DEBUG
+  push  mes_pmm
+  call  SendTxt
+%endif
+
+%if SERIAL_DEBUG
+  push  bp
+  mov   bp, sp
+  push  ax
+
+  mov   ax, word [bp+6]
+  push  ax
+  call  SendWord
+  push  mes_crlf
+  call  SendTxt
+
+  pop   ax
+  pop   bp
+%endif
+
+  push  bp
+  mov   bp, sp
+
+  mov   ax, [bp+6]
+  cmp   ax, 0              ; Allocate function
+  je    PmmAllocate
+  cmp   ax, 1              ; Find function
+  je    PmmFind
+  cmp   ax, 2              ; Deallocate function
+  je    PmmDeallocate
+
+  ; else - error
+  PmmError:
+  %if SERIAL_DEBUG
+  push  mes_pmm_error
+  call  SendTxt
+  %endif
+  mov   dx, 0xffff         
+  mov   ax, 0xffff          
+  pop   bp
+  retf
+
+  PmmAllocate:
+  %if SERIAL_DEBUG
+  push  mes_pmm_allocate
+  call  SendTxt
+  %endif
+
+  %if SERIAL_DEBUG
+  push  eax
+  mov   eax, dword [bp+8]
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+  mov   eax, dword [bp+12]
+  push  eax
+  call  SendDword
+  push  ' '
+  call  SendChar
+  mov   ax, word [bp+16]
+  push  ax
+  call  SendWord
+  push  mes_crlf
+  call  SendTxt
+  pop   eax
+  %endif
+
+  mov   ax, word [bp+16]    ; allocate flags
+  test  ax, 1               ; in conventional memory?
+  jnz    PmmAllocateInConventional
+  test  ax, 2               ; in extended memory?
+  jnz    PmmAllocateInExtended
+
+  jmp   PmmError
+
+  PmmAllocateInConventional:
+  push  ecx  
+  push  eax
+  push  ebx
+  push  si
+
+  mov   eax, dword [bp+8]   ; block length in paragraphs
+  shl   eax, 4              ; *16 = block length in bytes
+
+  ; get curent pool address & update it
+  mov   ebx, dword [cs:PmmPoolAddress]
+  mov   ecx, ebx
+  add   ebx, eax
+  mov   dword [cs:PmmPoolAddress], ebx
+  jmp   PmmAllocateStoreInfo
+
+  PmmAllocateInExtended:
+  push  ecx  
+  push  eax
+  push  ebx
+  push  si
+
+  mov   eax, dword [bp+8]   ; block length in paragraphs
+  shl   eax, 4              ; *16 = block length in bytes
+
+  ; get curent pool address & update it
+  mov   ebx, dword [cs:PmmPoolExtendedAddress]
+  mov   ecx, ebx
+  add   ebx, eax
+  mov   dword [cs:PmmPoolExtendedAddress], ebx
+  jmp   PmmAllocateStoreInfo
+  
+  PmmAllocateStoreInfo:
+  ; store allocated block info
+  mov   eax, dword [bp+12]  ; block handle
+  mov   si, word [cs:PmmIndex]
+  inc   si
+  mov   word [cs:PmmIndex], si
+  dec   si
+  shl   si, 3                         ; *8 (1 record length)
+  add   si, PmmBase
+  mov   dword [cs:si], eax
+  mov   dword [cs:si+4], ecx
+
+  pop   si
+  pop   ebx
+  pop   eax
+
+  mov   ax, cx
+  shr   ecx, 16  
+  mov   dx, cx
+
+  %if SERIAL_DEBUG
+  push  dx
+  call  SendWord
+  push  ':'
+  call  SendChar
+  push  ax
+  call  SendWord
+  push  mes_crlf
+  call  SendTxt
+  %endif
+
+  pop   ecx
+  pop   bp
+  retf
+
+  PmmFind:
+  %if SERIAL_DEBUG
+  push  mes_pmm_find
+  call  SendTxt
+  %endif  
+
+  %if SERIAL_DEBUG
+  push  eax
+  mov   eax, dword [bp+8]
+  push  eax
+  call  SendDword
+  push  mes_crlf
+  call  SendTxt
+  pop   eax
+  %endif
+
+  push  ecx
+  push  eax
+  push  ebx
+  push  si
+
+  mov   cx, word [cs:PmmIndex]
+  mov   si, PmmBase
+  mov   eax, dword [bp+8]       ; handle to find
+  PmmFindLoop:
+  mov   ebx, dword [cs:si]
+  cmp   eax, ebx
+  je    PmmFindSuccess
+  add   si, 8
+  loop  PmmFindLoop
+
+  ; failed to find handle
+  pop   si
+  pop   ebx
+  pop   eax
+  pop   ecx
+  jmp   PmmError
+
+  PmmFindSuccess:
+  pop   si
+  pop   ebx
+  pop   eax
+  mov   ecx, dword [cs:si+4]
+  mov   ax, cx
+  shl   ecx, 16
+  mov   dx, cx    
+
+  %if SERIAL_DEBUG
+  push  dx
+  call  SendWord
+  push  ':'
+  call  SendChar
+  push  ax
+  call  SendWord
+  push  mes_crlf
+  call  SendTxt
+  %endif
+    
+  pop   ecx
+  pop   bp
+  retf
+
+  PmmDeallocate:
+  %if SERIAL_DEBUG
+  push  mes_pmm_deallocate
+  call  SendTxt
+  %endif  
+
+  %if SERIAL_DEBUG
+  push  eax
+  mov   eax, dword [bp+8]
+  push  eax
+  call  SendDword
+  push  mes_crlf
+  call  SendTxt
+  pop   eax
+  %endif
+
+  push  ecx
+  push  eax
+  push  ebx
+  push  si
+
+  mov   cx, word [cs:PmmIndex]
+  mov   si, PmmBase
+  mov   eax, dword [bp+8]     ; phys address to deallocate
+  PmmDeallocateLoop:
+  mov   ebx, dword [cs:si+4]
+  cmp   eax, ebx
+  je    PmmDeallocateSuccess
+  add   si, 8
+  loop  PmmDeallocateLoop
+
+  ; failed to find address in base
+  pop   si
+  pop   ebx
+  pop   eax
+  pop   ecx
+  jmp   PmmError
+
+  PmmDeallocateSuccess:
+  ; clear PmmBase record
+  mov   dword [cs:si], 0
+  mov   dword [cs:si+4], 0
+  mov   cx, word [cs:PmmIndex]
+  dec   cx
+  mov   word [cs:PmmIndex], cx
+  cmp   eax, 0x100000
+  jae   PmmDeallocateInConvenional
+
+  mov   ebx, dword [cs:PmmPoolExtendedAddress]
+  add   ebx, eax
+  mov   dword [cs:PmmPoolExtendedAddress], ebx
+  jmp   PmmDeallocateExit
+
+  PmmDeallocateInConvenional:
+  mov   ebx, dword [cs:PmmPoolAddress]
+  add   ebx, eax
+  mov   dword [cs:PmmPoolAddress], ebx
+
+  PmmDeallocateExit:
+  pop   si
+  pop   ebx
+  pop   eax
+  pop   ecx
+
+  mov   dx, 0
+  mov   ax, 0
+  pop   bp
+  retf
+%endif
+
+%if ENABLE_PCI_BIOS_32
+BITS 32
+pci_bios_32:
+        and     ebx,ebx ;valid function code ?
+        jz      pci_bios_32a        ;:ok
+        mov     al,81h  ;unimplemented function
+        retf
+pci_bios_32a:
+        cmp     eax,49435024h   ;$PCI
+        jz      pci_bios_32b        ;:ok
+        mov     al,80h  ;service is not present
+        retf
+pci_bios_32b:
+        mov     al,0    ;ok status
+        mov     ebx,0xF000 << 16      ;BIOS segment base = $000f 0000 shl
+        mov     ecx,10000h      ;length of BIOS service = 64K
+        mov     edx,pci_32      ;offset from ebx base
+        retf 
+BITS 16
+%endif
+
+WarmReset:
+
+  ; soft/hard/full reset system
+  mov   dx, 0xcf9     ; RST_CNT chipset register
+    ;mov   al, 0x04      ; soft reset
+  mov   al, 0x06      ; hard reset
+    ;mov   al, 0x0e      ; full reset
+  out   dx, al
+
+warm_reset_stop_here:
+  jmp   warm_reset_stop_here
+
+;; ==================================================================================
+;; Global Descriptor Table to enter unreal mode
+;; ==================================================================================  
+ALIGN 16
+gdt	  dw	0fh
+a_gdt	dw	gdt1, 0fh
+
+;00h dummy
+gdt1    dw      0000h
+        dw      0000h
+        dw      0000h
+        dw      0000h
+
+;08h data 16 lim 4Gb
+        dw      0FFFFh
+        dw      00000h
+        dw      09200h
+        dw      0008Fh
+
+;; ==================================================================================
+;; Compatibility16 Table
+;; ==================================================================================
+times 0x9000 - ($-$$) db 0
+Compatibility16Table:
+
+Signature:		       		dd 	'IFE$'			;
+TableChecksum:		       		db	0x00		        ;
+TableLenght:				db	0x53		        ;
+EfiMajorRevision:			db	0x02		        ;	Efi Revision = 2.3.1
+EfiMinorRevision:			db	0x1F		        ;
+TableMajorRevision			db	0x01		        ; Table Revision = 1.0.0
+TableMinorRevision			db	0x00			;
+Reserved:				dw	0x0000			;
+Compatibility16CallSegment:		dw	0xF000			;	Compatibility16 functions = 0xF6000
+Compatibility16CallOffset:		dw	0x6000			;
+PnPInstallationCheckSegment:		dw	0xF000			;	PnP stub
+PnPInstallationCheckOffset:		dw	0xCF00			;
+EfiSystemTable:			   	dd	0x00000000		;
+OemIdStringPointer:		    	dd	0x00000000		;
+AcpiRsdPtrPointer:		    	dd	0x000FDF00		; Address ACPI table to be placed
+OemRevision:			        dw	0x0000			;
+E820Pointer:			        dd	0x00000000		;	to be filled by EfiCompatibility code
+E820Length:			       	dd	0x00000000		;	to be filled by EfiCompatibility code
+IrqRoutingTablePointer:		  	dd	0x00000000		;	to be filled by EfiCompatibility code
+IrqRoutingTableLength:		  	dd	0x00000000		;	to be filled by EfiCompatibility code
+MpTablePtr:			       	dd	0x00000000		;	to be filled by EfiCompatibility code
+MpTableLength:			      	dd	0x00000000		;	to be filled by EfiCompatibility code
+OemIntSegment:			      	dw	0x0000			;
+OemIntOffset:		        	dw	0x0000			;
+Oem32Segment:		  		dw	0x0000			;
+Oem32Offset:	      			dw	0x0000			;
+Oem16Segment:	       			dw	0x0000			;
+Oem16Offset:	       			dw	0x0000			;
+TpmSegment:	       			dw	0x0000			;
+TpmOffset:	       			dw	0x0000			;
+IbvPointer:	       			dd	0x00000000		;
+PciExpressBase:	   			dd	0x00000000		;
+LastPciBus:	      			db	0x00			;
+
+;; ==================================================================================
+;; Memory for some tables to be placed (E820, PIRQ, etc)
+;; ==================================================================================
+times 0x9100 - ($-$$) db 0
+PMM_addr:
+
+;; ==================================================================================
+;; Memory for fonts
+;; ==================================================================================
+times 0xC000 - ($-$$) db 0
+
+;; don't move it, or reflect in BdsPlatform.c
+_VgaFont:
+%include "font.inc"
+
+;; ==================================================================================
+;; Memory for $PIR table
+;; ==================================================================================
+times 0xD000 - ($-$$) db 0
+
+;; ==================================================================================
+;; PCI_BIOS_32 structure
+;; ==================================================================================
+times 0xDD60 - ($-$$) db 0
+%if ENABLE_PCI_BIOS_32
+bios_32hd:
+        dd      '_32_'      ; signature
+        dw      pci_bios_32 ; entry point
+        dw      0xF000      ; BIOS segment
+        db      0           ; revision level 0
+        db      1           ; length (16 byte units)
+        db      0           ; checksum
+        db      0,0,0,0,0   ; reserved
+%endif
+;; ==================================================================================
+;; Memory for SmbiosTable (max size 0xFF)
+;; ==================================================================================
+times 0xDD70 - ($-$$) db 0
+
+;; ==================================================================================
+;; Memory space for PMM installation check
+;; ==================================================================================
+times 0xDE70 - ($-$$) db 0
+PMMInstallationCheck:
+%if ENABLE_PMM
+    dd  '$PMM'          ; signature
+    db  01h             ; version
+    db  10h             ; length
+    db  00              ; checksum
+    dw  PMMEntryPoint   ; real mode entry point offset
+    dw  0F000h          ; real mode entry point segment
+    db  0               ; reserved
+    db  0               ; reserved
+    db  0               ; reserved
+    db  0               ; reserved
+    db  0               ; reserved
+%endif
+
+;; ==================================================================================
+;; Memory space for PnP installation check
+;; ==================================================================================
+times 0xDE80 - ($-$$) db 0
+PnPInstallationCheck:
+%if ENABLE_PNP
+    dd  '$PnP'          ; signature
+    db  10h             ; version
+    db  21h             ; length
+    dw  0000h           ; control field - no events supported
+    db  00              ; checksum
+    dd  EventNotifyFlag ; event notification flag address
+    dw  PnPEntryPoint   ; real mode entry point offset
+    dw  0F000h          ; real mode entry point segment
+    dw  PnPEntryPoint32 ; protected mode entry point offset
+    dd  000F0000h       ; protected mode entry point code segment base address
+    dd  00000000h       ; OEM Device Identifier
+    dw  4000h          ; real mode data segment address
+    dd  00040000h       ; protected mode data segment base address
+%endif
+;; ==================================================================================
+;; Memory for ACPI table
+;; ==================================================================================
+times 0xDF00 - ($-$$) db 0
+
+;; ==================================================================================
+;; AP shutdown code
+;; ==================================================================================
+times 0xE000 - ($-$$) db 0
+BITS 32
+ApShutdown:
+   mov   al, 0x66
+   out   0x80, al
+   xor   eax, eax
+   xor   edx, edx
+   mov   ecx, 0xE7 ; MPERF
+   wrmsr
+   mov   ecx, 0xE8 ; APERF
+   wrmsr
+   xor   ecx, ecx
+   xor   edx, edx
+   mov   eax, 0xF0000 + monitor_addr
+   monitor 
+.halt_loop:
+   mov   eax, 0x30  ; C6
+   mov   ecx, 0x00
+   mwait
+   jmp .halt_loop
+ALIGN 0x20
+monitor_addr: dd 0, 0
+
+BITS 16
+
+%if VGA_2_CONSOLE
+f_int10ofs:
+        dw      0
+f_int10seg:
+        dw      0
+%endif
+
+bcv_ofs:
+    dw    0
+bcv_seg:
+    dw    0
+bev_ofs:
+    dw    0
+bev_seg:
+    dw    0
+BootDeviceType:
+    dw    0
+BootDriveNum:
+		db		0
+
+usb_kbd_flag:
+    db    0
+%if SERIAL_2_VGA
+VgaSet:
+    db    0
+%endif
+
+    ; fixed BIOS entry points
+times 0xE05B - ($-$$) db 0        ; POST entry point
+    jmp   POST
+
+; PMM data
+%if ENABLE_PMM
+PmmPoolAddress:
+  dd    0x00090000
+PmmPoolExtendedAddress:
+  dd    0x04000000
+PmmIndex:
+  dw    0x0000
+PmmBase:
+  dd    0     ; Handle index 0
+  dd    0     ; Address index 0
+  dd    0     ; Handle index 1
+  dd    0     ; Address index 1
+  dd    0     ; Handle index 2
+  dd    0     ; Address index 2
+  dd    0     ; Handle index 3
+  dd    0     ; Address index 3  
+%endif
+
+times 0xE2C3 - ($-$$) db 0        ; NMI entry point
+    int   02h
+
+times 0xE401 - ($-$$) db 0        ; HDD parameter table
+    ret
+
+times 0xE6F2 - ($-$$) db 0        ; Int19 entry point
+    int   19h
+
+times 0xE6F5 - ($-$$) db 0        ; Configuration Data Table
+    ret    
+
+times 0xE729 - ($-$$) db 0        ; Baud Rate Generator Table
+    ret
+
+times 0xE739 - ($-$$) db 0        ; Int14 entry point
+    int   14h
+
+times 0xE82E - ($-$$) db 0        ; Int16 entry point
+    int   16h
+
+times 0xE987 - ($-$$) db 0        ; Int09 entry point
+    int   09h
+
+times 0xEC59 - ($-$$) db 0        ; Int13 floppy entry point
+    int   40h
+
+times 0xEF57 - ($-$$) db 0        ; Int0E entry point
+    int   0Eh
+
+times 0xEFC7 - ($-$$) db 0        ; FDC parameter table
+    ret
+
+times 0xEFD2 - ($-$$) db 0        ; Int17 entry point
+    int   17h
+
+times 0xF065 - ($-$$) db 0        ; Int10 (Video) entry point
+    int   10h
+
+times 0xF0A4 - ($-$$) db 0        ; MDA and CGA Video Parameter Table Int1D
+    ret
+
+times 0xF841 - ($-$$) db 0        ; Int12 entry point
+    int   12h
+
+times 0xF84D - ($-$$) db 0        ; Int11 entry point
+    int   11h
+
+times 0xF859 - ($-$$) db 0        ; Int15 entry point
+    int   15h
+
+times 0xF8D5 - ($-$$) db 0        ; by reset vector
+    jmp   WarmReset
+
+times 0xFA6E - ($-$$) db 0        ; Low 128 chars of graphic video font
+    ret
+
+times 0xFE6E - ($-$$) db 0        ; Int1A entry point
+    int   1Ah
+
+times 0xFEA5 - ($-$$) db 0
+    int   08h
+
+times 0xFF53 - ($-$$) db 0        ; Dummy handler
+    iret
+
+times 0xFF54 - ($-$$) db 0        ; Int 05 entry point
+    int   05h
+
+times 0xFF82 - ($-$$) db 0
+    ;iret
+    int   1bh                      ; call Int1b to check
+
+times 0xFFD9 - ($-$$) db 0
+    ;EISA ident string
+;    db  'E'
+;    db  'I'
+;    db  'S'
+;    db  'A'
+    db  'P'
+    db  'C'
+    db  'I'
+    db  '_'
+    db  'I'
+    db  'S'
+    db  'A'
+
+times 0xFFF0 - ($-$$) db 0        ; Power-on entry point
+    jmp   0xF000:WarmReset
+
+times 0xFFF5 - ($-$$) db 0
+    ;BIOS date
+    db  '2'
+    db  '8'
+    db  '/'
+    db  '1'
+    db  '1'
+    db  '/'
+    db  '1'
+    db  '1'
+
+times 0xFFFE - ($-$$) db 0
+    ;System model
+    db  0xFC      ; Original AT
+

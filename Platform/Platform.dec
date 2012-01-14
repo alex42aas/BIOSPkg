@@ -1,0 +1,120 @@
+## @file
+# EFI/Framework Emulation Platform with UEFI HII interface supported.
+#
+# The Emulation Platform can be used to debug individual modules, prior to creating
+#    a real platform. This also provides an example for how an DSC is created.
+#
+# Copyright (c) 2006 - 2011, Intel Corporation. All rights reserved.<BR>
+#
+#    This program and the accompanying materials
+#    are licensed and made available under the terms and conditions of the BSD License
+#    which accompanies this distribution. The full text of the license may be found at
+#    http://opensource.org/licenses/bsd-license.php
+#
+#    THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+#    WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+#
+##
+## @file
+# This package is a platform package that provide platform module/library 
+#
+# File/Directory Orignazation:
+# |- Sec            : Emulation SecCore for Nt32 platform
+# |- *Pei           : PEIM drivers
+# |- *Dxe           : DXE drivers
+# |- Platform.dec   : This file
+# |- Include        : Include files for Platform
+# 
+#
+#
+#
+#
+
+[Defines]
+  DEC_SPECIFICATION              = 0x00010005
+  PACKAGE_NAME                   = PlatformPkg
+  PACKAGE_GUID                   = 5f409356-1838-499d-a62c-260a8efd814e
+  PACKAGE_VERSION                = 0.1
+
+[Includes]
+  Include
+  Common
+
+  $(EFI_SOURCE)/HaswellPkg/Intel/LynxPoint/Protocol/Spi
+  $(EFI_SOURCE)/HaswellPkg/Intel/LynxPoint
+  $(EFI_SOURCE)/HaswellPkg/Intel/LynxPoint/Include
+  $(EFI_SOURCE)/HaswellPkg/Intel/LynxPoint/Include/PchRegs
+  $(EFI_SOURCE)/HaswellPkg/Intel/LynxPoint/SampleCode/Ppi/SmbusPolicy
+  $(EFI_SOURCE)/HaswellPkg/Intel/SystemAgent/Include
+  $(EFI_SOURCE)/HaswellPkg/Intel/SystemAgent/SampleCode
+
+
+  $(EFI_SOURCE)/HaswellPkg/Intel/Me/Heci/Include
+  $(EFI_SOURCE)/HaswellPkg/Intel/Me/Library/MeKernel/include
+
+  $(EFI_SOURCE)/HaswellPkg/Intel/SystemAgent
+  $(EFI_SOURCE)/HaswellPkg/Intel/SystemAgent/MemoryInit/Pei/Source/Api
+  $(EFI_SOURCE)/HaswellPkg/Intel/SystemAgent/MemoryInit/Pei/Source/Include
+  $(EFI_SOURCE)/HaswellPkg/Intel/SystemAgent/MemoryInit/Pei/Source/Include/MrcRegisters
+
+#############################################################################################
+
+[LibraryClasses]
+
+[Guids.common]
+gEfiPlatformPkgTokenSpaceGuid   = { 0x14C1311c, 0xfe81, 0x25d2, {0x93, 0x2c, 0x70, 0x48, 0x54, 0x21, 0x77, 0x31 }}
+gVideoRomGuid         		= { 0xeb143895, 0x78cf, 0x4872, {0x84, 0x44, 0x1b, 0x5c, 0x18, 0x0b, 0xfb, 0xda }}
+gGopVbtGuid           		= { 0x3664a478, 0x1422, 0x4f73, {0xb6, 0xa8, 0x44, 0x93, 0x10, 0x6b, 0xd3, 0xd5 }}
+
+gEfiPowerMgmtInitDoneProtocolGuid = { 0xd71db106, 0xe32d, 0x4225, {0xbf, 0xf4, 0xde, 0x6d, 0x77, 0x87, 0x17, 0x61 }}
+
+[Ppis]
+
+[Protocols]
+gPlatformGopPolicyProtocolGuid    = { 0xec2e931b, 0x3281, 0x48a5, {0x81, 0x07, 0xdf, 0x8a, 0x8b, 0xed, 0x3c, 0x5d }}
+gGopDisplayBrightnessProtocolGuid = { 0x6ff23f1d, 0x877c, 0x4b1b, {0x93, 0xfc, 0xf1, 0x42, 0xb2, 0xee, 0xa6, 0xa7 }}
+gEfiPeripheralInfoProtocolGuid = { 0x285eb506, 0xe539, 0x46e5, { 0x85, 0x96, 0xa0, 0x4b, 0x0, 0x8f, 0x4, 0xe6 } }
+gEfiSpiProtocolGuid 		= { 0xf8b84ae6, 0x8465, 0x4f95, {0x9f, 0x0b, 0xea, 0xaa, 0x37, 0xc6, 0x15, 0x5a }}
+gEfiSmmSpiProtocolGuid 		= { 0xbd75fe35, 0xfdce, 0x49d7, {0xa9, 0xdd, 0xb2, 0x6f, 0x1f, 0xc6, 0xb4, 0x37 }}
+gEfiSmmIoTrapDispatchProtocolGuid 		= { 0xdb7f536b, 0xede4, 0x4714, { 0xa5, 0xc8, 0xe3, 0x46, 0xeb, 0xaa, 0x20, 0x1d }}
+gEfiSmmSwDispatchProtocolGuid 		= {0xe541b773, 0xdd11, 0x420c, {0xb0, 0x26, 0xdf, 0x99, 0x36, 0x53, 0xf8, 0xbf}}
+gEfiSmmPowerButtonDispatchProtocolGuid 		= {0xb709efa0, 0x47a6, 0x4b41, {0xb9, 0x31, 0x12, 0xec, 0xe7, 0xa8, 0xee, 0x56}}
+
+[PcdsFixedAtBuild]
+
+ gEfiPlatformPkgTokenSpaceGuid.BootableMassStorageController|0xffffffff|UINT32|0x10000007
+
+ gEfiPlatformPkgTokenSpaceGuid.PcdFlashNvStorageEventLogBase|0x0|UINT32|0x10000008
+ gEfiPlatformPkgTokenSpaceGuid.PcdFlashNvStorageEventLogSize|0x0|UINT32|0x10000009
+ gEfiPlatformPkgTokenSpaceGuid.PcdFirmwareBlockSize|0x1000|UINT32|0x1000000A
+
+ gEfiPlatformPkgTokenSpaceGuid.PcdBiosRegionBase|0x0|UINT32|0x1000000B
+
+
+
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashNvStorageEventLogBase|0x0|UINT32|0x0000100e
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashNvStorageEventLogSize|0x0|UINT32|0x0000100f
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashFvRecoveryBase|0x0|UINT32|0x00001010
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashFvRecoverySize|0x0|UINT32|0x00001011
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFirmwareFdSize|0x0|UINT32|0x00001012
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFirmwareBlockSize|0|UINT32|0x00001013
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashNvStorageVariableBase|0x0|UINT32|0x00001014
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashNvStorageFtwSpareBase|0x0|UINT32|0x00001015
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFlashNvStorageFtwWorkingBase|0x0|UINT32|0x00001016
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFdBaseAddress|0x0|UINT32|0x00001017
+
+[PcdsFixedAtBuild, PcdsPatchableInModule]
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtBootMode|1|UINT32|0x00001006
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFirmwareVolume|L"..\\Fv\\Fv_Recovery.fd"|VOID*|0x00001009
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtMemorySizeForSecMain|L"64!64"|VOID*|0x0000100c
+
+[PcdsDynamic, PcdsDynamicEx]
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtPhysicalDisk|L"E:RW;245760;512"|VOID*|0x00001000
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtVirtualDisk|L"FW;40960;512"|VOID*|0x00001001
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtSerialPort|L"COM1!COM2"|VOID*|0x00001002
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtUga|L"UGA Window 1!UGA Window 2"|VOID*|0x00001003
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtFileSystem|L".!..\\..\\..\\..\\EdkShellBinPkg\\bin\\ia32\\Apps"|VOID*|0x00001004
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtMemorySize|L"64!64"|VOID*|0x00001005
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtConsole|L"Bus Driver Console Window"|VOID*|0x0000100a
+#  gEfiNt32PkgTokenSpaceGuid.PcdWinNtGop|L"UGA Window 1!UGA Window 2"|VOID*|0x0000100d
+
